@@ -25,7 +25,8 @@
         "skipTaskbar": true,
         "transparent": true,
         "shadow": false,
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "visibleOnAllWorkspaces": true
       },
       {
         "label": "dashboard",
