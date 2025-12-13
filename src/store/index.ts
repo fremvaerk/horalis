@@ -70,6 +70,12 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       isRunning: true,
       elapsedSeconds: 0,
     });
+    // Set tray icon to project color
+    try {
+      await invoke("set_tray_icon_color", { color: selectedProject.color });
+    } catch (e) {
+      console.error("Failed to set tray icon color:", e);
+    }
   },
 
   stopTimer: async () => {
@@ -82,11 +88,12 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       isRunning: false,
       elapsedSeconds: 0,
     });
-    // Clear tray title after state update
+    // Clear tray title and reset icon after state update
     try {
       await invoke("clear_tray_title");
+      await invoke("reset_tray_icon");
     } catch (e) {
-      console.error("Failed to clear tray title:", e);
+      console.error("Failed to clear tray:", e);
     }
   },
 
@@ -111,6 +118,12 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         isRunning: true,
         elapsedSeconds: elapsed,
       });
+      // Set tray icon to project color if timer is running
+      try {
+        await invoke("set_tray_icon_color", { color: entry.project_color });
+      } catch (e) {
+        console.error("Failed to set tray icon color:", e);
+      }
     }
   },
 
