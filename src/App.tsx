@@ -10,7 +10,7 @@ function App() {
         <Route
           path="/"
           element={
-            <div className="w-full h-full p-1">
+            <div className="timer-window w-full h-full p-1">
               <FloatingTimer />
             </div>
           }

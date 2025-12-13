@@ -9,13 +9,17 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  margin: 0;
-  padding: 0;
+*, *::before, *::after {
   box-sizing: border-box;
 }
 
-body {
-  overflow: visible;
+/* Timer window specific styles */
+.timer-window {
   background: transparent;
+  overflow: visible;
+}
+
+.timer-window * {
+  margin: 0;
+  padding: 0;
 }
