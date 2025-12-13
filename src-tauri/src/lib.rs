@@ -1,13 +1,456 @@
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::TrayIconBuilder,
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
 // WindowExt trait needed for on_tray_event positioning
 #[allow(unused_imports)]
 use tauri_plugin_positioner::WindowExt;
 use std::sync::Mutex;
+use std::sync::LazyLock;
+
+// Embed SF Pro Bold font for rendering letters (or fallback to system font data)
+// Using a simple built-in bitmap font for uppercase letters to avoid font dependencies
+static LETTER_BITMAPS: LazyLock<std::collections::HashMap<char, [[u8; 8]; 10]>> = LazyLock::new(|| {
+    let mut map = std::collections::HashMap::new();
+    // 8x10 bitmap font for uppercase letters (1 = white pixel, 0 = transparent)
+    // These are simplified bitmaps that will be scaled and rendered
+    map.insert('A', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('B', [
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [1,1,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('C', [
+        [0,0,1,1,1,1,1,0],
+        [0,1,1,0,0,0,1,1],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [0,1,1,0,0,0,1,1],
+        [0,0,1,1,1,1,1,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('D', [
+        [1,1,1,1,1,0,0,0],
+        [1,1,0,0,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,1,1,0,0],
+        [1,1,1,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('E', [
+        [1,1,1,1,1,1,1,1],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('F', [
+        [1,1,1,1,1,1,1,1],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('G', [
+        [0,0,1,1,1,1,1,0],
+        [0,1,1,0,0,0,1,1],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,1,1,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,0,1,1],
+        [0,0,1,1,1,1,1,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('H', [
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('I', [
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('J', [
+        [0,0,0,0,1,1,1,1],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,0,1,1,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,1,1,0,0],
+        [0,1,1,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('K', [
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,1,1,0,0],
+        [1,1,0,1,1,0,0,0],
+        [1,1,1,1,0,0,0,0],
+        [1,1,1,1,0,0,0,0],
+        [1,1,0,1,1,0,0,0],
+        [1,1,0,0,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('L', [
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('M', [
+        [1,1,0,0,0,0,1,1],
+        [1,1,1,0,0,1,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,0,1,1,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('N', [
+        [1,1,0,0,0,0,1,1],
+        [1,1,1,0,0,0,1,1],
+        [1,1,1,1,0,0,1,1],
+        [1,1,0,1,1,0,1,1],
+        [1,1,0,0,1,1,1,1],
+        [1,1,0,0,0,1,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('O', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('P', [
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('Q', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,1,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('R', [
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,1,1,0,0,0],
+        [1,1,0,0,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('S', [
+        [0,0,1,1,1,1,1,0],
+        [0,1,1,0,0,0,1,1],
+        [1,1,0,0,0,0,0,0],
+        [0,1,1,0,0,0,0,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [0,1,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('T', [
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('U', [
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('V', [
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('W', [
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,1,1,0,1,1],
+        [1,1,1,1,1,1,1,1],
+        [1,1,1,0,0,1,1,1],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('X', [
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('Y', [
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('Z', [
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,1,1],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,1,1,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,1,1,0,0,0,0],
+        [0,1,1,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    // Numbers
+    map.insert('0', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,1],
+        [1,1,0,0,1,0,1,1],
+        [1,1,0,1,0,0,1,1],
+        [1,1,1,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('1', [
+        [0,0,0,1,1,0,0,0],
+        [0,0,1,1,1,0,0,0],
+        [0,1,1,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,1,1,1,1,1,1,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('2', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [0,0,0,0,0,0,1,1],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,1,1,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,1,1,0,0,0,0],
+        [0,1,1,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('3', [
+        [0,1,1,1,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [0,0,0,0,0,0,1,1],
+        [0,0,0,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [0,1,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('4', [
+        [0,0,0,0,1,1,0,0],
+        [0,0,0,1,1,1,0,0],
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,1,1,0,0],
+        [1,1,0,0,1,1,0,0],
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,1,1,0,0],
+        [0,0,0,0,1,1,0,0],
+        [0,0,0,0,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('5', [
+        [1,1,1,1,1,1,1,1],
+        [1,1,0,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,0,0],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,0,0,1,1],
+        [0,0,0,0,0,0,1,1],
+        [1,1,0,0,0,1,1,0],
+        [0,1,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('6', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,0,0,0],
+        [1,1,0,0,0,0,0,0],
+        [1,1,1,1,1,1,0,0],
+        [1,1,0,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('7', [
+        [1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,1,1],
+        [0,0,0,0,0,1,1,0],
+        [0,0,0,0,1,1,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('8', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map.insert('9', [
+        [0,0,1,1,1,1,0,0],
+        [0,1,1,0,0,1,1,0],
+        [1,1,0,0,0,0,1,1],
+        [1,1,0,0,0,0,1,1],
+        [0,1,1,0,0,1,1,1],
+        [0,0,1,1,1,1,1,1],
+        [0,0,0,0,0,0,1,1],
+        [0,0,0,0,0,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,0,0,0,0,0],
+    ]);
+    map
+});
 
 struct TrayState {
     tray: Mutex<Option<tauri::tray::TrayIcon>>,
@@ -25,8 +468,8 @@ fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
     Some((r, g, b))
 }
 
-/// Generate a simple colored circle icon (22x22 for macOS menu bar)
-fn generate_colored_icon(hex_color: &str) -> Vec<u8> {
+/// Generate a colored circle icon with an optional letter (22x22 for macOS menu bar)
+fn generate_colored_icon(hex_color: &str, letter: Option<char>) -> Vec<u8> {
     let size = 22u32;
     let (r, g, b) = parse_hex_color(hex_color).unwrap_or((91, 164, 196)); // Default to app blue
 
@@ -34,6 +477,7 @@ fn generate_colored_icon(hex_color: &str) -> Vec<u8> {
     let center = size as f32 / 2.0;
     let radius = size as f32 / 2.0 - 1.0;
 
+    // Draw the circle
     for y in 0..size {
         for x in 0..size {
             let dx = x as f32 - center;
@@ -60,6 +504,54 @@ fn generate_colored_icon(hex_color: &str) -> Vec<u8> {
         }
     }
 
+    // Draw the letter if provided
+    if let Some(ch) = letter {
+        let upper_ch = ch.to_ascii_uppercase();
+        if let Some(bitmap) = LETTER_BITMAPS.get(&upper_ch) {
+            // Scale and center the 8x10 bitmap in the 22x22 icon
+            // Leave some padding for the circle edge
+            let letter_width = 8;
+            let letter_height = 10;
+            let scale = 1.4f32; // Scale factor for better visibility
+            let scaled_width = (letter_width as f32 * scale) as i32;
+            let scaled_height = (letter_height as f32 * scale) as i32;
+            let offset_x = ((size as i32 - scaled_width) / 2) as f32;
+            let offset_y = ((size as i32 - scaled_height) / 2) as f32;
+
+            // Render the scaled bitmap with white color
+            for py in 0..scaled_height {
+                for px in 0..scaled_width {
+                    let src_x = (px as f32 / scale) as usize;
+                    let src_y = (py as f32 / scale) as usize;
+
+                    if src_y < letter_height && src_x < letter_width {
+                        let pixel = bitmap[src_y][src_x];
+                        if pixel == 1 {
+                            let x = (offset_x as i32 + px) as u32;
+                            let y = (offset_y as i32 + py) as u32;
+
+                            if x < size && y < size {
+                                // Check if this pixel is inside the circle
+                                let dx = x as f32 - center;
+                                let dy = y as f32 - center;
+                                let distance = (dx * dx + dy * dy).sqrt();
+
+                                if distance <= radius - 1.0 {
+                                    let idx = ((y * size + x) * 4) as usize;
+                                    // Draw white letter
+                                    rgba[idx] = 255;     // R
+                                    rgba[idx + 1] = 255; // G
+                                    rgba[idx + 2] = 255; // B
+                                    // Keep alpha at 255
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     rgba
 }
 
@@ -79,9 +571,10 @@ fn clear_tray_title(state: tauri::State<TrayState>) {
 }
 
 #[tauri::command]
-fn set_tray_icon_color(state: tauri::State<TrayState>, color: String) {
+fn set_tray_icon_color(state: tauri::State<TrayState>, color: String, name: String) {
     if let Some(tray) = state.tray.lock().unwrap().as_ref() {
-        let icon_data = generate_colored_icon(&color);
+        let first_char = name.chars().next();
+        let icon_data = generate_colored_icon(&color, first_char);
         let icon = Image::new_owned(icon_data, 22, 22);
         let _ = tray.set_icon(Some(icon));
     }
@@ -90,8 +583,8 @@ fn set_tray_icon_color(state: tauri::State<TrayState>, color: String) {
 #[tauri::command]
 fn reset_tray_icon(state: tauri::State<TrayState>) {
     if let Some(tray) = state.tray.lock().unwrap().as_ref() {
-        // Reset to a neutral gray color when timer is stopped
-        let icon_data = generate_colored_icon("#808080");
+        // Reset to a neutral gray color when timer is stopped (no letter)
+        let icon_data = generate_colored_icon("#808080", None);
         let icon = Image::new_owned(icon_data, 22, 22);
         let _ = tray.set_icon(Some(icon));
     }
@@ -115,11 +608,13 @@ pub fn run() {
             let dashboard = MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &dashboard, &quit])?;
 
-            // Create tray icon
+            // Create tray icon with gray circle (no timer running initially)
+            let initial_icon_data = generate_colored_icon("#808080", None);
+            let initial_icon = Image::new_owned(initial_icon_data, 22, 22);
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(initial_icon)
                 .menu(&menu)
-                .show_menu_on_left_click(false)
+                .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         app.exit(0);
@@ -157,36 +652,6 @@ pub fn run() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
-
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("dashboard") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        } else {
-                            // Window was closed, recreate it
-                            let _ = WebviewWindowBuilder::new(
-                                app,
-                                "dashboard",
-                                WebviewUrl::App("index.html#/dashboard".into()),
-                            )
-                            .title("Time Tracker")
-                            .inner_size(900.0, 650.0)
-                            .min_inner_size(700.0, 500.0)
-                            .resizable(true)
-                            .center()
-                            .build();
-                        }
-                    }
                 })
                 .build(app)?;
 

@@ -10,6 +10,7 @@ import {
   createProject,
   updateProject,
   deleteProject,
+  getLastUsedProjectId,
 } from "../lib/db";
 
 interface TimerState {
@@ -44,9 +45,26 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     try {
       const projects = await getProjects();
       const { selectedProject } = get();
+
+      // Try to restore last used project from time entries history
+      let defaultProject = selectedProject;
+      if (!defaultProject) {
+        try {
+          const lastProjectId = await getLastUsedProjectId();
+          if (lastProjectId) {
+            defaultProject = projects.find(p => p.id === lastProjectId) || null;
+          }
+        } catch (e) {
+          console.error("Failed to get last used project:", e);
+        }
+        if (!defaultProject) {
+          defaultProject = projects[0] || null;
+        }
+      }
+
       set({
         projects,
-        selectedProject: selectedProject || projects[0] || null,
+        selectedProject: defaultProject,
         isLoading: false,
       });
     } catch (error) {
@@ -70,9 +88,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       isRunning: true,
       elapsedSeconds: 0,
     });
-    // Set tray icon to project color
+    // Set tray icon to project color with first letter
     try {
-      await invoke("set_tray_icon_color", { color: selectedProject.color });
+      await invoke("set_tray_icon_color", { color: selectedProject.color, name: selectedProject.name });
     } catch (e) {
       console.error("Failed to set tray icon color:", e);
     }
@@ -118,9 +136,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         isRunning: true,
         elapsedSeconds: elapsed,
       });
-      // Set tray icon to project color if timer is running
+      // Set tray icon to project color with first letter if timer is running
       try {
-        await invoke("set_tray_icon_color", { color: entry.project_color });
+        await invoke("set_tray_icon_color", { color: entry.project_color, name: entry.project_name });
       } catch (e) {
         console.error("Failed to set tray icon color:", e);
       }

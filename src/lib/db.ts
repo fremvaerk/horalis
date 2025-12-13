@@ -155,3 +155,11 @@ export async function getWeekTotal(): Promise<number> {
   );
   return result[0]?.total || 0;
 }
+
+export async function getLastUsedProjectId(): Promise<number | null> {
+  const db = await getDb();
+  const result = await db.select<{ project_id: number }[]>(
+    `SELECT project_id FROM time_entries ORDER BY start_time DESC LIMIT 1`
+  );
+  return result[0]?.project_id || null;
+}
