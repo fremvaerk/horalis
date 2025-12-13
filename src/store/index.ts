@@ -26,6 +26,7 @@ interface TimerState {
   selectProject: (project: Project) => void;
   startTimer: () => Promise<void>;
   stopTimer: () => Promise<void>;
+  startTimerForProject: (projectId: number) => Promise<void>;
   tick: () => void;
   loadCurrentEntry: () => Promise<void>;
   addProject: (name: string, color: string) => Promise<void>;
@@ -67,6 +68,17 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         selectedProject: defaultProject,
         isLoading: false,
       });
+
+      // Update tray menu with projects
+      try {
+        const { isRunning } = get();
+        await invoke("update_tray_menu", {
+          projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
+          isRunning,
+        });
+      } catch (e) {
+        console.error("Failed to update tray menu:", e);
+      }
     } catch (error) {
       console.error("Failed to load projects:", error);
       set({ isLoading: false, projects: [] });
@@ -78,7 +90,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   },
 
   startTimer: async () => {
-    const { selectedProject } = get();
+    const { selectedProject, projects } = get();
     if (!selectedProject) return;
 
     await startTimeEntry(selectedProject.id);
@@ -91,13 +103,18 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // Set tray icon to project color with first letter
     try {
       await invoke("set_tray_icon_color", { color: selectedProject.color, name: selectedProject.name });
+      // Update tray menu to enable "Stop Timer"
+      await invoke("update_tray_menu", {
+        projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
+        isRunning: true,
+      });
     } catch (e) {
       console.error("Failed to set tray icon color:", e);
     }
   },
 
   stopTimer: async () => {
-    const { currentEntry } = get();
+    const { currentEntry, projects } = get();
     if (!currentEntry) return;
 
     await stopTimeEntry(currentEntry.id);
@@ -110,8 +127,48 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     try {
       await invoke("clear_tray_title");
       await invoke("reset_tray_icon");
+      // Update tray menu to disable "Stop Timer"
+      await invoke("update_tray_menu", {
+        projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
+        isRunning: false,
+      });
     } catch (e) {
       console.error("Failed to clear tray:", e);
+    }
+  },
+
+  startTimerForProject: async (projectId: number) => {
+    const { currentEntry, projects } = get();
+
+    // Stop any running timer first
+    if (currentEntry) {
+      await stopTimeEntry(currentEntry.id);
+    }
+
+    // Find the project
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    // Start new timer
+    await startTimeEntry(projectId);
+    const entry = await getRunningEntry();
+    set({
+      currentEntry: entry,
+      isRunning: true,
+      elapsedSeconds: 0,
+      selectedProject: project,
+    });
+
+    // Set tray icon to project color with first letter
+    try {
+      await invoke("set_tray_icon_color", { color: project.color, name: project.name });
+      // Update tray menu to enable "Stop Timer"
+      await invoke("update_tray_menu", {
+        projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
+        isRunning: true,
+      });
+    } catch (e) {
+      console.error("Failed to set tray icon color:", e);
     }
   },
 

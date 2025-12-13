@@ -1,8 +1,8 @@
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager, WebviewUrl, WebviewWindowBuilder,
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 // WindowExt trait needed for on_tray_event positioning
 #[allow(unused_imports)]
@@ -456,6 +456,14 @@ struct TrayState {
     tray: Mutex<Option<tauri::tray::TrayIcon>>,
 }
 
+#[derive(serde::Deserialize, Clone)]
+#[allow(dead_code)]
+struct ProjectInfo {
+    id: i64,
+    name: String,
+    color: String,
+}
+
 /// Parse a hex color string (e.g., "#FF5733" or "FF5733") into RGB values
 fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
     let hex = hex.trim_start_matches('#');
@@ -590,6 +598,103 @@ fn reset_tray_icon(state: tauri::State<TrayState>) {
     }
 }
 
+/// Generate a small colored circle icon for menu items (16x16)
+fn generate_menu_icon(hex_color: &str) -> Vec<u8> {
+    let size = 16u32;
+    let (r, g, b) = parse_hex_color(hex_color).unwrap_or((128, 128, 128));
+
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+    let center = size as f32 / 2.0;
+    let radius = size as f32 / 2.0 - 1.0;
+
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - center;
+            let dy = y as f32 - center;
+            let distance = (dx * dx + dy * dy).sqrt();
+
+            let idx = ((y * size + x) * 4) as usize;
+
+            if distance <= radius {
+                rgba[idx] = r;
+                rgba[idx + 1] = g;
+                rgba[idx + 2] = b;
+                rgba[idx + 3] = 255;
+            } else if distance <= radius + 1.0 {
+                let alpha = ((radius + 1.0 - distance) * 255.0) as u8;
+                rgba[idx] = r;
+                rgba[idx + 1] = g;
+                rgba[idx + 2] = b;
+                rgba[idx + 3] = alpha;
+            }
+        }
+    }
+
+    rgba
+}
+
+#[tauri::command]
+fn update_tray_menu(app: tauri::AppHandle, projects: Vec<ProjectInfo>, is_running: bool) -> Result<(), String> {
+    use tauri::menu::IconMenuItem;
+
+    let state = app.state::<TrayState>();
+    if let Some(tray) = state.tray.lock().unwrap().as_ref() {
+        // Build menu
+        let menu = Menu::new(&app).map_err(|e| e.to_string())?;
+
+        // Show/Hide Timer
+        let show = MenuItem::with_id(&app, "show", "Show/Hide Timer", true, None::<&str>)
+            .map_err(|e| e.to_string())?;
+        menu.append(&show).map_err(|e| e.to_string())?;
+
+        // Dashboard
+        let dashboard = MenuItem::with_id(&app, "dashboard", "Dashboard", true, None::<&str>)
+            .map_err(|e| e.to_string())?;
+        menu.append(&dashboard).map_err(|e| e.to_string())?;
+
+        // Separator
+        let separator = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+        menu.append(&separator).map_err(|e| e.to_string())?;
+
+        // Stop Timer (only enabled when running)
+        let stop = MenuItem::with_id(&app, "stop", "Stop Timer", is_running, None::<&str>)
+            .map_err(|e| e.to_string())?;
+        menu.append(&stop).map_err(|e| e.to_string())?;
+
+        // Separator before projects
+        let separator2 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+        menu.append(&separator2).map_err(|e| e.to_string())?;
+
+        // Project items with colored icons
+        for project in &projects {
+            let icon_data = generate_menu_icon(&project.color);
+            let icon = Image::new_owned(icon_data, 16, 16);
+
+            let item = IconMenuItem::with_id(
+                &app,
+                format!("project_{}", project.id),
+                &project.name,
+                true,
+                Some(icon),
+                None::<&str>,
+            ).map_err(|e| e.to_string())?;
+            menu.append(&item).map_err(|e| e.to_string())?;
+        }
+
+        // Separator before quit
+        let separator3 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+        menu.append(&separator3).map_err(|e| e.to_string())?;
+
+        // Quit
+        let quit = MenuItem::with_id(&app, "quit", "Quit", true, None::<&str>)
+            .map_err(|e| e.to_string())?;
+        menu.append(&quit).map_err(|e| e.to_string())?;
+
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -600,7 +705,7 @@ pub fn run() {
         .manage(TrayState {
             tray: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![set_tray_title, clear_tray_title, set_tray_icon_color, reset_tray_icon])
+        .invoke_handler(tauri::generate_handler![set_tray_title, clear_tray_title, set_tray_icon_color, reset_tray_icon, update_tray_menu])
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -615,40 +720,57 @@ pub fn run() {
                 .icon(initial_icon)
                 .menu(&menu)
                 .show_menu_on_left_click(true)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
+                .on_menu_event(|app, event| {
+                    let event_id = event.id.as_ref();
+                    match event_id {
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                if window.is_visible().unwrap_or(false) {
+                                    let _ = window.hide();
+                                } else {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                        }
+                        "dashboard" => {
+                            if let Some(window) = app.get_webview_window("dashboard") {
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                            } else {
+                                // Window was closed, recreate it
+                                let _ = WebviewWindowBuilder::new(
+                                    app,
+                                    "dashboard",
+                                    WebviewUrl::App("index.html#/dashboard".into()),
+                                )
+                                .title("Time Tracker")
+                                .inner_size(900.0, 650.0)
+                                .min_inner_size(700.0, 500.0)
+                                .resizable(true)
+                                .center()
+                                .build();
+                            }
+                        }
+                        "stop" => {
+                            // Emit event to frontend to stop the timer
+                            let _ = app.emit("stop-timer", ());
+                        }
+                        _ => {
+                            // Check for project clicks (format: "project_{id}")
+                            if event_id.starts_with("project_") {
+                                if let Some(id_str) = event_id.strip_prefix("project_") {
+                                    if let Ok(project_id) = id_str.parse::<i64>() {
+                                        // Emit event to frontend to start timer for this project
+                                        let _ = app.emit("start-project-timer", project_id);
+                                    }
+                                }
                             }
                         }
                     }
-                    "dashboard" => {
-                        if let Some(window) = app.get_webview_window("dashboard") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        } else {
-                            // Window was closed, recreate it
-                            let _ = WebviewWindowBuilder::new(
-                                app,
-                                "dashboard",
-                                WebviewUrl::App("index.html#/dashboard".into()),
-                            )
-                            .title("Time Tracker")
-                            .inner_size(900.0, 650.0)
-                            .min_inner_size(700.0, 500.0)
-                            .resizable(true)
-                            .center()
-                            .build();
-                        }
-                    }
-                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);

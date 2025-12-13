@@ -3,6 +3,7 @@ import { GripVertical, Play, Square, ChevronDown } from "lucide-react";
 import { useTimerStore } from "../store";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -24,6 +25,7 @@ export default function FloatingTimer() {
     selectProject,
     startTimer,
     stopTimer,
+    startTimerForProject,
     tick,
   } = useTimerStore();
 
@@ -47,6 +49,26 @@ export default function FloatingTimer() {
     loadProjects();
     loadCurrentEntry();
   }, []);
+
+  // Listen for tray menu project clicks
+  useEffect(() => {
+    const unlisten = listen<number>("start-project-timer", (event) => {
+      startTimerForProject(event.payload);
+    });
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, [startTimerForProject]);
+
+  // Listen for tray menu stop timer
+  useEffect(() => {
+    const unlisten = listen("stop-timer", () => {
+      stopTimer();
+    });
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, [stopTimer]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -112,14 +134,9 @@ export default function FloatingTimer() {
       {/* Project selector */}
       <div className="relative flex-1 min-w-0" ref={dropdownRef}>
         <button
-          onClick={() => !isRunning && setDropdownOpen(!dropdownOpen)}
+          onClick={() => setDropdownOpen(!dropdownOpen)}
           onMouseDown={(e) => e.stopPropagation()}
-          disabled={isRunning}
-          className={`flex items-center gap-1.5 px-1.5 py-1 rounded w-full text-left ${
-            isRunning
-              ? "cursor-default"
-              : "hover:bg-white/5 cursor-pointer"
-          }`}
+          className="flex items-center gap-1.5 px-1.5 py-1 rounded w-full text-left hover:bg-white/5 cursor-pointer"
         >
           <span
             className="w-2 h-2 rounded-full shrink-0"
@@ -128,9 +145,7 @@ export default function FloatingTimer() {
           <span className="text-white text-base font-semibold truncate">
             {displayProject?.name || "Select"}
           </span>
-          {!isRunning && (
-            <ChevronDown size={10} className="text-gray-400 shrink-0 ml-auto" />
-          )}
+          <ChevronDown size={10} className="text-gray-400 shrink-0 ml-auto" />
         </button>
 
         {dropdownOpen && (
@@ -139,11 +154,16 @@ export default function FloatingTimer() {
               <button
                 key={project.id}
                 onClick={() => {
-                  selectProject(project);
+                  if (isRunning) {
+                    // Switch to new project (stop current and start new)
+                    startTimerForProject(project.id);
+                  } else {
+                    selectProject(project);
+                  }
                   setDropdownOpen(false);
                 }}
                 className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-white/10 text-left ${
-                  selectedProject?.id === project.id ? "bg-white/5" : ""
+                  (isRunning ? currentEntry?.project_id : selectedProject?.id) === project.id ? "bg-white/5" : ""
                 }`}
               >
                 <span
