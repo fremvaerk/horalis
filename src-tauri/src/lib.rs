@@ -3,7 +3,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
-use tauri_plugin_positioner::{Position, WindowExt};
+use tauri_plugin_positioner::WindowExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -69,14 +69,26 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
+                        if let Some(window) = app.get_webview_window("dashboard") {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
-                                let _ = window.move_window(Position::TrayCenter);
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
+                        } else {
+                            // Window was closed, recreate it
+                            let _ = WebviewWindowBuilder::new(
+                                app,
+                                "dashboard",
+                                WebviewUrl::App("index.html#/dashboard".into()),
+                            )
+                            .title("Time Tracker")
+                            .inner_size(900.0, 650.0)
+                            .min_inner_size(700.0, 500.0)
+                            .resizable(true)
+                            .center()
+                            .build();
                         }
                     }
                 })
