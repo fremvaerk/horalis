@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Project,
   TimeEntry,
@@ -81,6 +82,12 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       isRunning: false,
       elapsedSeconds: 0,
     });
+    // Clear tray title after state update
+    try {
+      await invoke("clear_tray_title");
+    } catch (e) {
+      console.error("Failed to clear tray title:", e);
+    }
   },
 
   tick: () => {

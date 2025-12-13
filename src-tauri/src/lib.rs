@@ -3,7 +3,27 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
+// WindowExt trait needed for on_tray_event positioning
+#[allow(unused_imports)]
 use tauri_plugin_positioner::WindowExt;
+use std::sync::Mutex;
+
+struct TrayState(Mutex<Option<tauri::tray::TrayIcon>>);
+
+#[tauri::command]
+fn set_tray_title(state: tauri::State<TrayState>, title: String) {
+    if let Some(tray) = state.0.lock().unwrap().as_ref() {
+        let _ = tray.set_title(Some(&title));
+    }
+}
+
+#[tauri::command]
+fn clear_tray_title(state: tauri::State<TrayState>) {
+    if let Some(tray) = state.0.lock().unwrap().as_ref() {
+        // Use empty string instead of None - None might not clear on macOS
+        let _ = tray.set_title(Some(""));
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +32,8 @@ pub fn run() {
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .manage(TrayState(Mutex::new(None)))
+        .invoke_handler(tauri::generate_handler![set_tray_title, clear_tray_title])
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -93,6 +115,9 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Store tray reference for later updates
+            *app.state::<TrayState>().0.lock().unwrap() = Some(_tray);
 
             // Hide dock icon on macOS
             #[cfg(target_os = "macos")]

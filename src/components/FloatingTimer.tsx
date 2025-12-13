@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { GripVertical, Play, Square, ChevronDown } from "lucide-react";
 import { useTimerStore } from "../store";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -53,6 +54,13 @@ export default function FloatingTimer() {
     }, 1000);
     return () => clearInterval(interval);
   }, [tick]);
+
+  // Update tray title when timer is running
+  useEffect(() => {
+    if (isRunning) {
+      invoke("set_tray_title", { title: formatTime(elapsedSeconds) });
+    }
+  }, [isRunning, elapsedSeconds]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
