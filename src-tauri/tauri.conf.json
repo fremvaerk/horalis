@@ -26,6 +26,19 @@
         "transparent": true,
         "shadow": false,
         "acceptFirstMouse": true
+      },
+      {
+        "label": "dashboard",
+        "title": "Time Tracker",
+        "url": "index.html#/dashboard",
+        "width": 900,
+        "height": 650,
+        "minWidth": 700,
+        "minHeight": 500,
+        "decorations": true,
+        "resizable": true,
+        "visible": false,
+        "center": true
       }
     ],
     "trayIcon": {

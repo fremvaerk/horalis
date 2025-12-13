@@ -1,7 +1,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_positioner::{Position, WindowExt};
 
@@ -15,8 +15,9 @@ pub fn run() {
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let show = MenuItem::with_id(app, "show", "Show/Hide Timer", true, None::<&str>)?;
+            let dashboard = MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &dashboard, &quit])?;
 
             // Create tray icon
             let _tray = TrayIconBuilder::new()
@@ -35,6 +36,25 @@ pub fn run() {
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
+                        }
+                    }
+                    "dashboard" => {
+                        if let Some(window) = app.get_webview_window("dashboard") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        } else {
+                            // Window was closed, recreate it
+                            let _ = WebviewWindowBuilder::new(
+                                app,
+                                "dashboard",
+                                WebviewUrl::App("index.html#/dashboard".into()),
+                            )
+                            .title("Time Tracker")
+                            .inner_size(900.0, 650.0)
+                            .min_inner_size(700.0, 500.0)
+                            .resizable(true)
+                            .center()
+                            .build();
                         }
                     }
                     _ => {}
