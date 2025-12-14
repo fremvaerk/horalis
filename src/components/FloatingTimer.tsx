@@ -12,6 +12,12 @@ function formatTime(seconds: number): string {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function formatTrayTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}:${m.toString().padStart(2, "0")}`;
+}
+
 export default function FloatingTimer() {
   const {
     projects,
@@ -77,12 +83,12 @@ export default function FloatingTimer() {
     return () => clearInterval(interval);
   }, [tick]);
 
-  // Update tray title when timer is running
+  // Update tray title when timer is running (only update when minutes change)
   useEffect(() => {
     if (isRunning) {
-      invoke("set_tray_title", { title: formatTime(elapsedSeconds) });
+      invoke("set_tray_title", { title: formatTrayTime(elapsedSeconds) });
     }
-  }, [isRunning, elapsedSeconds]);
+  }, [isRunning, Math.floor(elapsedSeconds / 60)]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
