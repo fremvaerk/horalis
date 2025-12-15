@@ -74,7 +74,7 @@ export async function createProject(name: string, color: string): Promise<number
     "INSERT INTO projects (name, color) VALUES (?, ?)",
     [name, color]
   );
-  return result.lastInsertId;
+  return result.lastInsertId ?? 0;
 }
 
 export async function updateProject(id: number, name: string, color: string): Promise<void> {
@@ -97,7 +97,7 @@ export async function startTimeEntry(projectId: number): Promise<number> {
     "INSERT INTO time_entries (project_id, start_time) VALUES (?, datetime('now'))",
     [projectId]
   );
-  return result.lastInsertId;
+  return result.lastInsertId ?? 0;
 }
 
 export async function stopTimeEntry(entryId: number): Promise<void> {
@@ -141,7 +141,7 @@ export async function getTodayTotal(): Promise<number> {
   const result = await db.select<{ total: number | null }[]>(
     `SELECT SUM(duration) as total
      FROM time_entries
-     WHERE date(start_time) = date('now') AND end_time IS NOT NULL`
+     WHERE date(start_time, 'localtime') = date('now', 'localtime') AND end_time IS NOT NULL`
   );
   return result[0]?.total || 0;
 }
@@ -151,7 +151,7 @@ export async function getWeekTotal(): Promise<number> {
   const result = await db.select<{ total: number | null }[]>(
     `SELECT SUM(duration) as total
      FROM time_entries
-     WHERE start_time >= datetime('now', '-7 days') AND end_time IS NOT NULL`
+     WHERE date(start_time, 'localtime') >= date('now', 'localtime', '-7 days') AND end_time IS NOT NULL`
   );
   return result[0]?.total || 0;
 }
@@ -162,4 +162,27 @@ export async function getLastUsedProjectId(): Promise<number | null> {
     `SELECT project_id FROM time_entries ORDER BY start_time DESC LIMIT 1`
   );
   return result[0]?.project_id || null;
+}
+
+export async function deleteTimeEntry(id: number): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM time_entries WHERE id = ?", [id]);
+}
+
+export async function updateTimeEntry(
+  id: number,
+  projectId: number,
+  startTime: string,
+  endTime: string
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE time_entries
+     SET project_id = ?,
+         start_time = ?,
+         end_time = ?,
+         duration = CAST((julianday(?) - julianday(?)) * 86400 AS INTEGER)
+     WHERE id = ?`,
+    [projectId, startTime, endTime, endTime, startTime, id]
+  );
 }

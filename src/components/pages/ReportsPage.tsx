@@ -70,8 +70,12 @@ function getMonthRange(date: Date): { start: Date; end: Date; label: string } {
   return { start, end, label };
 }
 
-function toSQLDate(date: Date): string {
-  return date.toISOString().split("T")[0];
+function toLocalDateString(date: Date): string {
+  // Format as YYYY-MM-DD in local timezone
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export default function ReportsPage() {
@@ -105,17 +109,18 @@ export default function ReportsPage() {
     setIsLoading(true);
     try {
       const db = await getDb();
-      const startDate = toSQLDate(range.start);
-      const endDate = toSQLDate(range.end);
+      const startDate = toLocalDateString(range.start);
+      const endDate = toLocalDateString(range.end);
 
       // Get daily breakdown for chart
+      // Use 'localtime' modifier to convert UTC timestamps to local timezone for grouping
       const dailyRaw = await db.select<{ date: string; project_id: number; project_name: string; total: number }[]>(
-        `SELECT date(start_time) as date, te.project_id, p.name as project_name, SUM(te.duration) as total
+        `SELECT date(start_time, 'localtime') as date, te.project_id, p.name as project_name, SUM(te.duration) as total
          FROM time_entries te
          JOIN projects p ON te.project_id = p.id
-         WHERE date(te.start_time) >= ? AND date(te.start_time) <= ? AND te.end_time IS NOT NULL
-         GROUP BY date(te.start_time), te.project_id
-         ORDER BY date(te.start_time)`,
+         WHERE date(te.start_time, 'localtime') >= ? AND date(te.start_time, 'localtime') <= ? AND te.end_time IS NOT NULL
+         GROUP BY date(te.start_time, 'localtime'), te.project_id
+         ORDER BY date(te.start_time, 'localtime')`,
         [startDate, endDate]
       );
 
@@ -123,7 +128,7 @@ export default function ReportsPage() {
       const chartMap = new Map<string, DailyChartData>();
       const current = new Date(range.start);
       while (current <= range.end) {
-        const dateStr = toSQLDate(current);
+        const dateStr = toLocalDateString(current);
         const dayLabel = current.toLocaleDateString("en-US", {
           weekday: "short",
           day: "numeric",
@@ -153,7 +158,7 @@ export default function ReportsPage() {
                 SUM(te.duration) as total_duration
          FROM time_entries te
          JOIN projects p ON te.project_id = p.id
-         WHERE date(te.start_time) >= ? AND date(te.start_time) <= ? AND te.end_time IS NOT NULL
+         WHERE date(te.start_time, 'localtime') >= ? AND date(te.start_time, 'localtime') <= ? AND te.end_time IS NOT NULL
          GROUP BY te.project_id
          ORDER BY total_duration DESC`,
         [startDate, endDate]

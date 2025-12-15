@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { MoreVertical, Trash2, Pencil } from "lucide-react";
-import { getTimeEntries, TimeEntry } from "../../lib/db";
+import { MoreVertical, Trash2, Pencil, AlertTriangle, X } from "lucide-react";
+import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, TimeEntry, Project } from "../../lib/db";
 
 interface EntryWithProject extends TimeEntry {
   project_name: string;
@@ -33,12 +33,24 @@ function formatEntryDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function parseDbDate(dateStr: string): Date {
+  // Handle both SQLite format (2025-12-11 09:00:44) and ISO format (2025-12-11T09:00:44Z)
+  if (dateStr.includes("T")) {
+    return new Date(dateStr);
+  }
+  return new Date(dateStr + "Z");
+}
+
 function formatTime(dateStr: string): string {
-  const date = new Date(dateStr + "Z");
+  const date = parseDbDate(dateStr);
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function getDateKey(dateStr: string): string {
+  // Handle both formats
+  if (dateStr.includes("T")) {
+    return dateStr.split("T")[0];
+  }
   return dateStr.split(" ")[0];
 }
 
@@ -61,12 +73,10 @@ function formatDisplayDate(dateKey: string): string {
     return "Yesterday";
   } else {
     const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
-    const dateFormatted = date.toLocaleDateString("en-US", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-    return `${weekday}, ${dateFormatted}`;
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${weekday}, ${day}.${month}.${year}`;
   }
 }
 
@@ -95,23 +105,80 @@ function groupEntriesByDay(entries: EntryWithProject[]): DayGroup[] {
   return result.sort((a, b) => b.date.localeCompare(a.date));
 }
 
+function toLocalDateTimeInput(dbDateStr: string): string {
+  const date = parseDbDate(dbDateStr);
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function fromLocalDateTimeInput(localDateTimeStr: string): string {
+  const date = new Date(localDateTimeStr);
+  return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
 export default function HistoryPage() {
   const [entries, setEntries] = useState<EntryWithProject[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<EntryWithProject | null>(null);
+  const [editEntry, setEditEntry] = useState<EntryWithProject | null>(null);
+  const [editProjectId, setEditProjectId] = useState<number>(0);
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
 
   useEffect(() => {
-    loadEntries();
+    loadData();
   }, []);
 
-  async function loadEntries() {
+  async function loadData() {
     try {
-      const data = await getTimeEntries(200);
-      setEntries(data);
+      const [entriesData, projectsData] = await Promise.all([
+        getTimeEntries(200),
+        getProjects(),
+      ]);
+      setEntries(entriesData);
+      setProjects(projectsData);
     } catch (error) {
-      console.error("Failed to load entries:", error);
+      console.error("Failed to load data:", error);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteConfirm) return;
+    try {
+      await deleteTimeEntry(deleteConfirm.id);
+      setDeleteConfirm(null);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to delete entry:", error);
+    }
+  }
+
+  function openEditModal(entry: EntryWithProject) {
+    setEditEntry(entry);
+    setEditProjectId(entry.project_id);
+    setEditStartTime(toLocalDateTimeInput(entry.start_time));
+    setEditEndTime(entry.end_time ? toLocalDateTimeInput(entry.end_time) : "");
+    setMenuOpen(null);
+  }
+
+  async function handleEdit() {
+    if (!editEntry || !editStartTime || !editEndTime) return;
+    try {
+      await updateTimeEntry(
+        editEntry.id,
+        editProjectId,
+        fromLocalDateTimeInput(editStartTime),
+        fromLocalDateTimeInput(editEndTime)
+      );
+      setEditEntry(null);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to update entry:", error);
     }
   }
 
@@ -191,10 +258,7 @@ export default function HistoryPage() {
                       {menuOpen === entry.id && (
                         <div className="absolute right-0 top-full mt-1 w-36 bg-[#333] rounded-lg shadow-xl border border-white/10 py-1 z-50">
                           <button
-                            onClick={() => {
-                              // TODO: Implement edit
-                              setMenuOpen(null);
-                            }}
+                            onClick={() => openEditModal(entry)}
                             className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-white/10"
                           >
                             <Pencil size={14} />
@@ -202,7 +266,7 @@ export default function HistoryPage() {
                           </button>
                           <button
                             onClick={() => {
-                              // TODO: Implement delete
+                              setDeleteConfirm(entry);
                               setMenuOpen(null);
                             }}
                             className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-white/10 text-red-400"
@@ -220,6 +284,113 @@ export default function HistoryPage() {
           ))
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-[#252525] rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-semibold">Delete Entry</h3>
+            </div>
+            <p className="text-gray-300 mb-2">
+              Are you sure you want to delete this time entry?
+            </p>
+            <p className="text-gray-400 text-sm mb-6">
+              <strong>{deleteConfirm.project_name}</strong> - {formatTime(deleteConfirm.start_time)} to {deleteConfirm.end_time ? formatTime(deleteConfirm.end_time) : "..."} ({formatEntryDuration(deleteConfirm.duration || 0)})
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#303030] text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editEntry && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-[#252525] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold">Edit Time Entry</h3>
+              <button
+                onClick={() => setEditEntry(null)}
+                className="p-1 hover:bg-white/10 rounded"
+              >
+                <X size={20} className="text-gray-400" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Project selector */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Project</label>
+                <select
+                  value={editProjectId}
+                  onChange={(e) => setEditProjectId(Number(e.target.value))}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                >
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Start time */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Start Time</label>
+                <input
+                  type="datetime-local"
+                  value={editStartTime}
+                  onChange={(e) => setEditStartTime(e.target.value)}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* End time */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">End Time</label>
+                <input
+                  type="datetime-local"
+                  value={editEndTime}
+                  onChange={(e) => setEditEndTime(e.target.value)}
+                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                onClick={() => setEditEntry(null)}
+                className="px-4 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#303030] text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEdit}
+                disabled={!editStartTime || !editEndTime}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
