@@ -34,6 +34,27 @@ async function initSchema() {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+
+  // Insert default settings if they don't exist
+  const defaultSettings = [
+    ["show_window_on_startup", "true"],
+    ["show_timer_in_tray", "true"],
+    ["stop_timer_when_idle", "false"],
+    ["idle_timeout_minutes", "5"],
+  ];
+  for (const [key, value] of defaultSettings) {
+    await db.execute(
+      "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+      [key, value]
+    );
+  }
+
   // Insert default projects if none exist
   const projects = await db.select<{ count: number }[]>(
     "SELECT COUNT(*) as count FROM projects"
@@ -184,5 +205,38 @@ export async function updateTimeEntry(
          duration = CAST((julianday(?) - julianday(?)) * 86400 AS INTEGER)
      WHERE id = ?`,
     [projectId, startTime, endTime, endTime, startTime, id]
+  );
+}
+
+// Settings functions
+export interface AppSettings {
+  show_window_on_startup: boolean;
+  show_timer_in_tray: boolean;
+  stop_timer_when_idle: boolean;
+  idle_timeout_minutes: number;
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  const db = await getDb();
+  const rows = await db.select<{ key: string; value: string }[]>(
+    "SELECT key, value FROM settings"
+  );
+  const settings: Record<string, string> = {};
+  for (const row of rows) {
+    settings[row.key] = row.value;
+  }
+  return {
+    show_window_on_startup: settings.show_window_on_startup === "true",
+    show_timer_in_tray: settings.show_timer_in_tray === "true",
+    stop_timer_when_idle: settings.stop_timer_when_idle === "true",
+    idle_timeout_minutes: parseInt(settings.idle_timeout_minutes || "5", 10),
+  };
+}
+
+export async function updateSetting(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+    [key, value]
   );
 }

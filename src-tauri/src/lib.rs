@@ -13,6 +13,14 @@ use ab_glyph::{FontRef, PxScale, Font};
 use tokio::sync::watch;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Get idle time in seconds using system-idle-time crate
+fn get_idle_time_seconds() -> Option<u64> {
+    match system_idle_time::get_idle_time() {
+        Ok(duration) => Some(duration.as_secs()),
+        Err(_) => None,
+    }
+}
+
 // Load bold system font for rendering letters
 static FONT_DATA: LazyLock<Option<Vec<u8>>> = LazyLock::new(|| {
     // Try to load bold fonts - prefer Arial Bold for clean, bold letters
@@ -173,6 +181,8 @@ fn format_tray_time(elapsed_secs: u64) -> String {
 async fn start_tray_timer(
     app: tauri::AppHandle,
     start_time_ms: u64,
+    idle_enabled: Option<bool>,
+    idle_timeout_minutes: Option<u64>,
 ) -> Result<(), String> {
     let timer_state = app.state::<NativeTimerState>();
     let tray_state = app.state::<TrayState>();
@@ -206,6 +216,8 @@ async fn start_tray_timer(
 
     // Clone what we need for the background task
     let app_handle = app.clone();
+    let idle_check_enabled = idle_enabled.unwrap_or(false);
+    let idle_timeout_secs = idle_timeout_minutes.unwrap_or(5) * 60;
 
     // Spawn background task to update tray title every minute
     tauri::async_runtime::spawn(async move {
@@ -234,6 +246,17 @@ async fn start_tray_timer(
             let Some(start_ms) = start_time else {
                 return;
             };
+
+            // Check for idle timeout if enabled
+            if idle_check_enabled {
+                if let Some(idle_secs) = get_idle_time_seconds() {
+                    if idle_secs >= idle_timeout_secs {
+                        // Emit idle timeout event to frontend
+                        let _ = app_handle.emit("idle-timeout", idle_secs);
+                        return;
+                    }
+                }
+            }
 
             // Calculate elapsed time
             let now_ms = SystemTime::now()

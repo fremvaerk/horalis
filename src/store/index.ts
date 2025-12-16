@@ -11,6 +11,8 @@ import {
   updateProject,
   deleteProject,
   getLastUsedProjectId,
+  getSettings,
+  AppSettings,
 } from "../lib/db";
 
 interface TimerState {
@@ -21,9 +23,11 @@ interface TimerState {
   elapsedSeconds: number;
   isLoading: boolean;
   error: string | null;
+  settings: AppSettings | null;
 
   // Actions
   loadProjects: () => Promise<void>;
+  loadSettings: () => Promise<AppSettings | null>;
   selectProject: (project: Project) => void;
   startTimer: () => Promise<void>;
   stopTimer: () => Promise<void>;
@@ -43,6 +47,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   elapsedSeconds: 0,
   isLoading: true,
   error: null,
+  settings: null,
 
   loadProjects: async () => {
     try {
@@ -89,12 +94,23 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     }
   },
 
+  loadSettings: async () => {
+    try {
+      const settings = await getSettings();
+      set({ settings });
+      return settings;
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+      return null;
+    }
+  },
+
   selectProject: (project) => {
     set({ selectedProject: project });
   },
 
   startTimer: async () => {
-    const { selectedProject, projects } = get();
+    const { selectedProject, projects, settings } = get();
     if (!selectedProject) return;
 
     await startTimeEntry(selectedProject.id);
@@ -107,9 +123,15 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // Set tray icon to project color with first letter
     try {
       await invoke("set_tray_icon_color", { color: selectedProject.color, name: selectedProject.name });
-      // Start native background timer for tray title updates
-      const startTimeMs = Date.now();
-      await invoke("start_tray_timer", { startTimeMs });
+      // Start native background timer for tray title updates (only if setting enabled)
+      if (settings?.show_timer_in_tray !== false) {
+        const startTimeMs = Date.now();
+        await invoke("start_tray_timer", {
+          startTimeMs,
+          idleEnabled: settings?.stop_timer_when_idle ?? false,
+          idleTimeoutMinutes: settings?.idle_timeout_minutes ?? 5,
+        });
+      }
       // Update tray menu to enable "Stop Timer"
       await invoke("update_tray_menu", {
         projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
@@ -145,7 +167,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   },
 
   startTimerForProject: async (projectId: number) => {
-    const { currentEntry, projects } = get();
+    const { currentEntry, projects, settings } = get();
 
     // Stop any running timer first
     if (currentEntry) {
@@ -169,9 +191,15 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // Set tray icon to project color with first letter
     try {
       await invoke("set_tray_icon_color", { color: project.color, name: project.name });
-      // Start native background timer for tray title updates
-      const startTimeMs = Date.now();
-      await invoke("start_tray_timer", { startTimeMs });
+      // Start native background timer for tray title updates (only if setting enabled)
+      if (settings?.show_timer_in_tray !== false) {
+        const startTimeMs = Date.now();
+        await invoke("start_tray_timer", {
+          startTimeMs,
+          idleEnabled: settings?.stop_timer_when_idle ?? false,
+          idleTimeoutMinutes: settings?.idle_timeout_minutes ?? 5,
+        });
+      }
       // Update tray menu to enable "Stop Timer"
       await invoke("update_tray_menu", {
         projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
@@ -195,6 +223,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
 
   loadCurrentEntry: async () => {
     try {
+      const { settings } = get();
       const entry = await getRunningEntry();
       if (entry) {
         const startTime = new Date(entry.start_time + "Z").getTime();
@@ -208,8 +237,14 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         // Set tray icon to project color with first letter if timer is running
         try {
           await invoke("set_tray_icon_color", { color: entry.project_color, name: entry.project_name });
-          // Start native background timer with the original start time
-          await invoke("start_tray_timer", { startTimeMs: startTime });
+          // Start native background timer with the original start time (only if setting enabled)
+          if (settings?.show_timer_in_tray !== false) {
+            await invoke("start_tray_timer", {
+              startTimeMs: startTime,
+              idleEnabled: settings?.stop_timer_when_idle ?? false,
+              idleTimeoutMinutes: settings?.idle_timeout_minutes ?? 5,
+            });
+          }
         } catch (e) {
           console.error("Failed to set tray icon color:", e);
         }

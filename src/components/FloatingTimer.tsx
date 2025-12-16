@@ -3,6 +3,7 @@ import { GripVertical, Play, Square, ChevronDown } from "lucide-react";
 import { useTimerStore } from "../store";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -21,6 +22,7 @@ export default function FloatingTimer() {
     isLoading,
     error,
     loadProjects,
+    loadSettings,
     loadCurrentEntry,
     selectProject,
     startTimer,
@@ -31,6 +33,7 @@ export default function FloatingTimer() {
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const startupHandledRef = useRef(false);
 
   // Resize window when dropdown opens/closes
   useEffect(() => {
@@ -46,8 +49,24 @@ export default function FloatingTimer() {
   }, [dropdownOpen, projects.length]);
 
   useEffect(() => {
-    loadProjects();
-    loadCurrentEntry();
+    async function init() {
+      // Load settings first to get the show_window_on_startup preference
+      const settings = await loadSettings();
+
+      // Handle show_window_on_startup setting (only once at startup)
+      if (!startupHandledRef.current) {
+        startupHandledRef.current = true;
+        if (settings && settings.show_window_on_startup === false) {
+          const win = getCurrentWindow();
+          win.hide();
+        }
+      }
+
+      // Then load projects and current entry
+      await loadProjects();
+      await loadCurrentEntry();
+    }
+    init();
   }, []);
 
   // Listen for tray menu project clicks
@@ -63,6 +82,17 @@ export default function FloatingTimer() {
   // Listen for tray menu stop timer
   useEffect(() => {
     const unlisten = listen("stop-timer", () => {
+      stopTimer();
+    });
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, [stopTimer]);
+
+  // Listen for idle timeout from Rust backend
+  useEffect(() => {
+    const unlisten = listen<number>("idle-timeout", (event) => {
+      console.log(`Idle timeout reached: ${event.payload} seconds`);
       stopTimer();
     });
     return () => {
