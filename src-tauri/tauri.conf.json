@@ -58,6 +58,14 @@
     ],
     "macOS": {
       "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "wix": null
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      }
     }
   },
   "plugins": {}

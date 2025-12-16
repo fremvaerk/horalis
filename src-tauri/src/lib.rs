@@ -21,17 +21,35 @@ fn get_idle_time_seconds() -> Option<u64> {
     }
 }
 
-// Load bold system font for rendering letters
+// Load bold system font for rendering letters (platform-specific paths)
 static FONT_DATA: LazyLock<Option<Vec<u8>>> = LazyLock::new(|| {
-    // Try to load bold fonts - prefer Arial Bold for clean, bold letters
-    let font_paths = [
+    #[cfg(target_os = "macos")]
+    let font_paths: &[&str] = &[
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
         "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf",
         "/System/Library/Fonts/SFNS.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
     ];
 
-    for path in &font_paths {
+    #[cfg(target_os = "windows")]
+    let font_paths: &[&str] = &[
+        "C:\\Windows\\Fonts\\arialbd.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf",
+        "C:\\Windows\\Fonts\\segoeui.ttf",
+    ];
+
+    #[cfg(target_os = "linux")]
+    let font_paths: &[&str] = &[
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+    ];
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    let font_paths: &[&str] = &[];
+
+    for path in font_paths {
         if let Ok(data) = std::fs::read(path) {
             return Some(data);
         }
@@ -177,6 +195,17 @@ fn format_tray_time(elapsed_secs: u64) -> String {
     format!("{}:{:02}", h, m)
 }
 
+/// Helper to set tray title (macOS only - on other platforms this is a no-op)
+#[cfg(target_os = "macos")]
+fn set_tray_title_platform(tray: &tauri::tray::TrayIcon, title: Option<&str>) {
+    let _ = tray.set_title(title);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_tray_title_platform(_tray: &tauri::tray::TrayIcon, _title: Option<&str>) {
+    // Tray titles are only supported on macOS
+}
+
 #[tauri::command]
 async fn start_tray_timer(
     app: tauri::AppHandle,
@@ -211,7 +240,7 @@ async fn start_tray_timer(
     let initial_title = format_tray_time(elapsed_secs);
 
     if let Some(tray) = tray_state.tray.lock().unwrap().as_ref() {
-        let _ = tray.set_title(Some(&initial_title));
+        set_tray_title_platform(tray, Some(&initial_title));
     }
 
     // Clone what we need for the background task
@@ -274,7 +303,7 @@ async fn start_tray_timer(
                 let tray_state = app_handle.state::<TrayState>();
                 let guard = tray_state.tray.lock().unwrap();
                 if let Some(tray) = guard.as_ref() {
-                    let _ = tray.set_title(Some(&title));
+                    set_tray_title_platform(tray, Some(&title));
                 }
             }
         }
@@ -302,14 +331,14 @@ fn stop_tray_timer(app: tauri::AppHandle) {
     let tray_state = app.state::<TrayState>();
     let guard = tray_state.tray.lock().unwrap();
     if let Some(tray) = guard.as_ref() {
-        let _ = tray.set_title(Some(""));
+        set_tray_title_platform(tray, Some(""));
     }
 }
 
 #[tauri::command]
 fn set_tray_title(state: tauri::State<TrayState>, title: String) {
     if let Some(tray) = state.tray.lock().unwrap().as_ref() {
-        let _ = tray.set_title(Some(&title));
+        set_tray_title_platform(tray, Some(&title));
     }
 }
 
@@ -317,7 +346,7 @@ fn set_tray_title(state: tauri::State<TrayState>, title: String) {
 fn clear_tray_title(state: tauri::State<TrayState>) {
     if let Some(tray) = state.tray.lock().unwrap().as_ref() {
         // Use empty string instead of None - None might not clear on macOS
-        let _ = tray.set_title(Some(""));
+        set_tray_title_platform(tray, Some(""));
     }
 }
 
