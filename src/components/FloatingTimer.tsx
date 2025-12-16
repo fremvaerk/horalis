@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { GripVertical, Play, Square, ChevronDown } from "lucide-react";
 import { useTimerStore } from "../store";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 function formatTime(seconds: number): string {
@@ -10,12 +9,6 @@ function formatTime(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatTrayTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${h}:${m.toString().padStart(2, "0")}`;
 }
 
 export default function FloatingTimer() {
@@ -26,6 +19,7 @@ export default function FloatingTimer() {
     isRunning,
     elapsedSeconds,
     isLoading,
+    error,
     loadProjects,
     loadCurrentEntry,
     selectProject,
@@ -83,13 +77,6 @@ export default function FloatingTimer() {
     return () => clearInterval(interval);
   }, [tick]);
 
-  // Update tray title when timer is running (only update when minutes change)
-  useEffect(() => {
-    if (isRunning) {
-      invoke("set_tray_title", { title: formatTrayTime(elapsedSeconds) });
-    }
-  }, [isRunning, Math.floor(elapsedSeconds / 60)]);
-
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -121,6 +108,14 @@ export default function FloatingTimer() {
     return (
       <div className="h-9 bg-[#1a1a1a] rounded-lg flex items-center justify-center">
         <span className="text-gray-400 text-xs">Loading...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-9 bg-[#1a1a1a] rounded-lg flex items-center justify-center px-2">
+        <span className="text-red-400 text-xs truncate" title={error}>Error: {error}</span>
       </div>
     );
   }

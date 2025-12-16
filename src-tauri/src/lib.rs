@@ -10,6 +10,8 @@ use tauri_plugin_positioner::WindowExt;
 use std::sync::Mutex;
 use std::sync::LazyLock;
 use ab_glyph::{FontRef, PxScale, Font};
+use tokio::sync::watch;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // Load bold system font for rendering letters
 static FONT_DATA: LazyLock<Option<Vec<u8>>> = LazyLock::new(|| {
@@ -31,6 +33,14 @@ static FONT_DATA: LazyLock<Option<Vec<u8>>> = LazyLock::new(|| {
 
 struct TrayState {
     tray: Mutex<Option<tauri::tray::TrayIcon>>,
+}
+
+// Timer state for native background timer
+struct NativeTimerState {
+    // Start time as Unix timestamp in milliseconds (None if not running)
+    start_time_ms: Mutex<Option<u64>>,
+    // Channel to signal stop to the background task
+    stop_tx: Mutex<Option<watch::Sender<bool>>>,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -150,6 +160,127 @@ fn generate_colored_icon(hex_color: &str, letter: Option<char>) -> Vec<u8> {
     }
 
     rgba
+}
+
+/// Format elapsed seconds as "H:MM" for tray title
+fn format_tray_time(elapsed_secs: u64) -> String {
+    let h = elapsed_secs / 3600;
+    let m = (elapsed_secs % 3600) / 60;
+    format!("{}:{:02}", h, m)
+}
+
+#[tauri::command]
+async fn start_tray_timer(
+    app: tauri::AppHandle,
+    start_time_ms: u64,
+) -> Result<(), String> {
+    let timer_state = app.state::<NativeTimerState>();
+    let tray_state = app.state::<TrayState>();
+
+    // Stop any existing timer first
+    {
+        let mut stop_tx_guard = timer_state.stop_tx.lock().unwrap();
+        if let Some(tx) = stop_tx_guard.take() {
+            let _ = tx.send(true);
+        }
+    }
+
+    // Store the start time
+    *timer_state.start_time_ms.lock().unwrap() = Some(start_time_ms);
+
+    // Create channel for stopping
+    let (stop_tx, mut stop_rx) = watch::channel(false);
+    *timer_state.stop_tx.lock().unwrap() = Some(stop_tx);
+
+    // Set initial tray title
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let elapsed_secs = (now_ms.saturating_sub(start_time_ms)) / 1000;
+    let initial_title = format_tray_time(elapsed_secs);
+
+    if let Some(tray) = tray_state.tray.lock().unwrap().as_ref() {
+        let _ = tray.set_title(Some(&initial_title));
+    }
+
+    // Clone what we need for the background task
+    let app_handle = app.clone();
+
+    // Spawn background task to update tray title every minute
+    tauri::async_runtime::spawn(async move {
+        let mut last_minutes = elapsed_secs / 60;
+
+        loop {
+            // Wait for ~10 seconds or until stopped
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {}
+                _ = stop_rx.changed() => {
+                    if *stop_rx.borrow() {
+                        return;
+                    }
+                }
+            }
+
+            // Check if we should stop
+            if *stop_rx.borrow() {
+                return;
+            }
+
+            // Get current start time (might have been cleared)
+            let timer_state = app_handle.state::<NativeTimerState>();
+            let start_time: Option<u64> = *timer_state.start_time_ms.lock().unwrap();
+
+            let Some(start_ms) = start_time else {
+                return;
+            };
+
+            // Calculate elapsed time
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            let elapsed_secs = (now_ms.saturating_sub(start_ms)) / 1000;
+            let current_minutes = elapsed_secs / 60;
+
+            // Only update tray when minutes change
+            if current_minutes != last_minutes {
+                last_minutes = current_minutes;
+                let title = format_tray_time(elapsed_secs);
+
+                let tray_state = app_handle.state::<TrayState>();
+                let guard = tray_state.tray.lock().unwrap();
+                if let Some(tray) = guard.as_ref() {
+                    let _ = tray.set_title(Some(&title));
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_tray_timer(app: tauri::AppHandle) {
+    let timer_state = app.state::<NativeTimerState>();
+
+    // Clear start time
+    *timer_state.start_time_ms.lock().unwrap() = None;
+
+    // Signal stop to background task
+    {
+        let mut stop_tx_guard = timer_state.stop_tx.lock().unwrap();
+        if let Some(tx) = stop_tx_guard.take() {
+            let _ = tx.send(true);
+        }
+    }
+
+    // Clear tray title
+    let tray_state = app.state::<TrayState>();
+    let guard = tray_state.tray.lock().unwrap();
+    if let Some(tray) = guard.as_ref() {
+        let _ = tray.set_title(Some(""));
+    }
 }
 
 #[tauri::command]
@@ -294,7 +425,11 @@ pub fn run() {
         .manage(TrayState {
             tray: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![set_tray_title, clear_tray_title, set_tray_icon_color, reset_tray_icon, update_tray_menu])
+        .manage(NativeTimerState {
+            start_time_ms: Mutex::new(None),
+            stop_tx: Mutex::new(None),
+        })
+        .invoke_handler(tauri::generate_handler![set_tray_title, clear_tray_title, set_tray_icon_color, reset_tray_icon, update_tray_menu, start_tray_timer, stop_tray_timer])
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

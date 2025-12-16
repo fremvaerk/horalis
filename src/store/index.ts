@@ -20,6 +20,7 @@ interface TimerState {
   isRunning: boolean;
   elapsedSeconds: number;
   isLoading: boolean;
+  error: string | null;
 
   // Actions
   loadProjects: () => Promise<void>;
@@ -41,9 +42,11 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   isRunning: false,
   elapsedSeconds: 0,
   isLoading: true,
+  error: null,
 
   loadProjects: async () => {
     try {
+      set({ error: null });
       const projects = await getProjects();
       const { selectedProject } = get();
 
@@ -81,7 +84,8 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       }
     } catch (error) {
       console.error("Failed to load projects:", error);
-      set({ isLoading: false, projects: [] });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      set({ isLoading: false, projects: [], error: `Failed to load: ${errorMessage}` });
     }
   },
 
@@ -103,6 +107,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // Set tray icon to project color with first letter
     try {
       await invoke("set_tray_icon_color", { color: selectedProject.color, name: selectedProject.name });
+      // Start native background timer for tray title updates
+      const startTimeMs = Date.now();
+      await invoke("start_tray_timer", { startTimeMs });
       // Update tray menu to enable "Stop Timer"
       await invoke("update_tray_menu", {
         projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
@@ -123,9 +130,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
       isRunning: false,
       elapsedSeconds: 0,
     });
-    // Clear tray title and reset icon after state update
+    // Stop native background timer and reset tray
     try {
-      await invoke("clear_tray_title");
+      await invoke("stop_tray_timer");
       await invoke("reset_tray_icon");
       // Update tray menu to disable "Stop Timer"
       await invoke("update_tray_menu", {
@@ -162,6 +169,9 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // Set tray icon to project color with first letter
     try {
       await invoke("set_tray_icon_color", { color: project.color, name: project.name });
+      // Start native background timer for tray title updates
+      const startTimeMs = Date.now();
+      await invoke("start_tray_timer", { startTimeMs });
       // Update tray menu to enable "Stop Timer"
       await invoke("update_tray_menu", {
         projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
@@ -180,25 +190,34 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     const now = Date.now();
     const elapsed = Math.floor((now - startTime) / 1000);
     set({ elapsedSeconds: elapsed });
+    // Note: Tray title updates are now handled by native Rust background timer
   },
 
   loadCurrentEntry: async () => {
-    const entry = await getRunningEntry();
-    if (entry) {
-      const startTime = new Date(entry.start_time + "Z").getTime();
-      const now = Date.now();
-      const elapsed = Math.floor((now - startTime) / 1000);
-      set({
-        currentEntry: entry,
-        isRunning: true,
-        elapsedSeconds: elapsed,
-      });
-      // Set tray icon to project color with first letter if timer is running
-      try {
-        await invoke("set_tray_icon_color", { color: entry.project_color, name: entry.project_name });
-      } catch (e) {
-        console.error("Failed to set tray icon color:", e);
+    try {
+      const entry = await getRunningEntry();
+      if (entry) {
+        const startTime = new Date(entry.start_time + "Z").getTime();
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTime) / 1000);
+        set({
+          currentEntry: entry,
+          isRunning: true,
+          elapsedSeconds: elapsed,
+        });
+        // Set tray icon to project color with first letter if timer is running
+        try {
+          await invoke("set_tray_icon_color", { color: entry.project_color, name: entry.project_name });
+          // Start native background timer with the original start time
+          await invoke("start_tray_timer", { startTimeMs: startTime });
+        } catch (e) {
+          console.error("Failed to set tray icon color:", e);
+        }
       }
+    } catch (error) {
+      console.error("Failed to load current entry:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      set({ error: `Failed to load entry: ${errorMessage}` });
     }
   },
 
