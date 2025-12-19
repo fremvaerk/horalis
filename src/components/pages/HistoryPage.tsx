@@ -7,11 +7,20 @@ interface EntryWithProject extends TimeEntry {
   project_color: string;
 }
 
+interface ProjectSummary {
+  projectId: number;
+  projectName: string;
+  projectColor: string;
+  totalSeconds: number;
+  percentage: number;
+}
+
 interface DayGroup {
   date: string;
   displayDate: string;
   entries: EntryWithProject[];
   totalDuration: number;
+  projectBreakdown: ProjectSummary[];
 }
 
 function formatDuration(seconds: number): string {
@@ -94,11 +103,38 @@ function groupEntriesByDay(entries: EntryWithProject[]): DayGroup[] {
   const result: DayGroup[] = [];
   for (const [dateKey, dayEntries] of groups) {
     const totalDuration = dayEntries.reduce((sum, e) => sum + (e.duration || 0), 0);
+
+    // Calculate project breakdown
+    const projectTotals = new Map<number, { name: string; color: string; seconds: number }>();
+    for (const entry of dayEntries) {
+      const existing = projectTotals.get(entry.project_id);
+      if (existing) {
+        existing.seconds += entry.duration || 0;
+      } else {
+        projectTotals.set(entry.project_id, {
+          name: entry.project_name,
+          color: entry.project_color,
+          seconds: entry.duration || 0,
+        });
+      }
+    }
+
+    const projectBreakdown: ProjectSummary[] = Array.from(projectTotals.entries())
+      .map(([projectId, data]) => ({
+        projectId,
+        projectName: data.name,
+        projectColor: data.color,
+        totalSeconds: data.seconds,
+        percentage: totalDuration > 0 ? (data.seconds / totalDuration) * 100 : 0,
+      }))
+      .sort((a, b) => b.totalSeconds - a.totalSeconds);
+
     result.push({
       date: dateKey,
       displayDate: formatDisplayDate(dateKey),
       entries: dayEntries,
       totalDuration,
+      projectBreakdown,
     });
   }
 
@@ -115,6 +151,46 @@ function toLocalDateTimeInput(dbDateStr: string): string {
 function fromLocalDateTimeInput(localDateTimeStr: string): string {
   const date = new Date(localDateTimeStr);
   return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
+function DaySummaryBar({ breakdown }: { breakdown: ProjectSummary[] }) {
+  const [hoveredProject, setHoveredProject] = useState<ProjectSummary | null>(null);
+
+  if (breakdown.length === 0) return null;
+
+  return (
+    <div className="relative">
+      <div className="flex h-2 rounded-full overflow-hidden bg-[#1a1a1a]">
+        {breakdown.map((project, index) => (
+          <div
+            key={project.projectId}
+            className="relative h-full transition-opacity hover:opacity-80"
+            style={{
+              backgroundColor: project.projectColor,
+              width: `${Math.max(project.percentage, 2)}%`,
+              marginLeft: index > 0 ? "1px" : 0,
+            }}
+            onMouseEnter={() => setHoveredProject(project)}
+            onMouseLeave={() => setHoveredProject(null)}
+          />
+        ))}
+      </div>
+
+      {/* Tooltip */}
+      {hoveredProject && (
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 bg-[#1a1a1a] border border-white/10 rounded text-xs whitespace-nowrap z-50 shadow-lg">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: hoveredProject.projectColor }}
+            />
+            <span className="font-medium">{hoveredProject.projectName}</span>
+            <span className="text-gray-400">{formatDuration(hoveredProject.totalSeconds)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function HistoryPage() {
@@ -216,6 +292,9 @@ export default function HistoryPage() {
                   {formatDuration(group.totalDuration)}
                 </span>
               </div>
+
+              {/* Summary bar */}
+              <DaySummaryBar breakdown={group.projectBreakdown} />
 
               {/* Entries for this day */}
               <div className="bg-[#252525] rounded-xl overflow-hidden">

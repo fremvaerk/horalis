@@ -12,6 +12,7 @@ use std::sync::LazyLock;
 use ab_glyph::{FontRef, PxScale, Font};
 use tokio::sync::watch;
 use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::{Local, Timelike, Datelike};
 
 /// Get idle time in seconds using system-idle-time crate
 fn get_idle_time_seconds() -> Option<u64> {
@@ -67,6 +68,22 @@ struct NativeTimerState {
     start_time_ms: Mutex<Option<u64>>,
     // Channel to signal stop to the background task
     stop_tx: Mutex<Option<watch::Sender<bool>>>,
+}
+
+// Reminder configuration
+#[derive(Clone, serde::Deserialize)]
+struct ReminderConfig {
+    enabled: bool,
+    interval_minutes: u32,
+    start_time: String,  // "HH:MM" format
+    end_time: String,    // "HH:MM" format
+    weekdays: Vec<u32>,  // 0=Sun, 1=Mon, ..., 6=Sat
+}
+
+// Reminder state for background task
+struct ReminderState {
+    stop_tx: Mutex<Option<watch::Sender<bool>>>,
+    last_notification_time: Mutex<Option<u64>>, // Unix timestamp in seconds
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -195,6 +212,48 @@ fn format_tray_time(elapsed_secs: u64) -> String {
     format!("{}:{:02}", h, m)
 }
 
+/// Parse "HH:MM" time string into (hour, minute)
+fn parse_time_string(time_str: &str) -> Option<(u32, u32)> {
+    let parts: Vec<&str> = time_str.split(':').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let hour = parts[0].parse::<u32>().ok()?;
+    let minute = parts[1].parse::<u32>().ok()?;
+    if hour > 23 || minute > 59 {
+        return None;
+    }
+    Some((hour, minute))
+}
+
+/// Check if current time is within the reminder time window
+fn is_within_time_window(start_time: &str, end_time: &str) -> bool {
+    let now = Local::now();
+    let current_minutes = now.hour() * 60 + now.minute();
+
+    let Some((start_h, start_m)) = parse_time_string(start_time) else {
+        return false;
+    };
+    let Some((end_h, end_m)) = parse_time_string(end_time) else {
+        return false;
+    };
+
+    let start_minutes = start_h * 60 + start_m;
+    let end_minutes = end_h * 60 + end_m;
+
+    current_minutes >= start_minutes && current_minutes <= end_minutes
+}
+
+/// Check if current day is in the allowed weekdays (0=Sun, 1=Mon, ..., 6=Sat)
+fn is_allowed_weekday(weekdays: &[u32]) -> bool {
+    let now = Local::now();
+    // chrono: 0=Mon, 1=Tue, ..., 6=Sun
+    // UI convention: 0=Sun, 1=Mon, ..., 6=Sat
+    let chrono_weekday = now.weekday().num_days_from_monday(); // 0=Mon ... 6=Sun
+    let ui_weekday = if chrono_weekday == 6 { 0 } else { chrono_weekday + 1 };
+    weekdays.contains(&ui_weekday)
+}
+
 /// Helper to set tray title (macOS only - on other platforms this is a no-op)
 #[cfg(target_os = "macos")]
 fn set_tray_title_platform(tray: &tauri::tray::TrayIcon, title: Option<&str>) {
@@ -280,6 +339,17 @@ async fn start_tray_timer(
             if idle_check_enabled {
                 if let Some(idle_secs) = get_idle_time_seconds() {
                     if idle_secs >= idle_timeout_secs {
+                        // Show notification about idle timeout
+                        {
+                            use tauri_plugin_notification::NotificationExt;
+                            let idle_mins = idle_secs / 60;
+                            let _ = app_handle
+                                .notification()
+                                .builder()
+                                .title("Timer Stopped")
+                                .body(format!("Timer was stopped due to {} minutes of inactivity.", idle_mins))
+                                .show();
+                        }
                         // Emit idle timeout event to frontend
                         let _ = app_handle.emit("idle-timeout", idle_secs);
                         return;
@@ -405,6 +475,116 @@ fn generate_menu_icon(hex_color: &str) -> Vec<u8> {
     rgba
 }
 
+/// Start or update the reminder system with new configuration
+#[tauri::command]
+async fn start_reminder(
+    app: tauri::AppHandle,
+    config: ReminderConfig,
+) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+
+    let reminder_state = app.state::<ReminderState>();
+
+    // Stop any existing reminder task
+    {
+        let mut stop_tx_guard = reminder_state.stop_tx.lock().unwrap();
+        if let Some(tx) = stop_tx_guard.take() {
+            let _ = tx.send(true);
+        }
+    }
+
+    // If reminders are disabled, just return
+    if !config.enabled {
+        return Ok(());
+    }
+
+    // Create channel for stopping
+    let (stop_tx, mut stop_rx) = watch::channel(false);
+    *reminder_state.stop_tx.lock().unwrap() = Some(stop_tx);
+
+    let app_handle = app.clone();
+    let interval_secs = (config.interval_minutes as u64) * 60;
+
+    // Spawn background task for reminder checking
+    tauri::async_runtime::spawn(async move {
+        loop {
+            // Wait for 60 seconds or until stopped (check every minute)
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {}
+                _ = stop_rx.changed() => {
+                    if *stop_rx.borrow() {
+                        return;
+                    }
+                }
+            }
+
+            // Check if we should stop
+            if *stop_rx.borrow() {
+                return;
+            }
+
+            // Check if timer is running - skip reminder if so
+            let timer_state = app_handle.state::<NativeTimerState>();
+            if timer_state.start_time_ms.lock().unwrap().is_some() {
+                // Timer is running, skip this check
+                continue;
+            }
+
+            // Check if current day is allowed
+            if !is_allowed_weekday(&config.weekdays) {
+                continue;
+            }
+
+            // Check if current time is within window
+            if !is_within_time_window(&config.start_time, &config.end_time) {
+                continue;
+            }
+
+            // Check if enough time has passed since last notification
+            let now_secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
+            let reminder_state = app_handle.state::<ReminderState>();
+            let mut last_time = reminder_state.last_notification_time.lock().unwrap();
+
+            if let Some(last) = *last_time {
+                if now_secs - last < interval_secs {
+                    // Not enough time has passed
+                    continue;
+                }
+            }
+
+            // All conditions met - send notification
+            if let Err(e) = app_handle
+                .notification()
+                .builder()
+                .title("Time Tracker Reminder")
+                .body("Don't forget to track your time!")
+                .show()
+            {
+                eprintln!("Failed to show notification: {}", e);
+            }
+
+            // Update last notification time
+            *last_time = Some(now_secs);
+        }
+    });
+
+    Ok(())
+}
+
+/// Stop the reminder system
+#[tauri::command]
+fn stop_reminder(app: tauri::AppHandle) {
+    let reminder_state = app.state::<ReminderState>();
+    let mut stop_tx_guard = reminder_state.stop_tx.lock().unwrap();
+    if let Some(tx) = stop_tx_guard.take() {
+        let _ = tx.send(true);
+    }
+}
+
 #[tauri::command]
 fn update_tray_menu(app: tauri::AppHandle, projects: Vec<ProjectInfo>, is_running: bool) -> Result<(), String> {
     use tauri::menu::IconMenuItem;
@@ -474,6 +654,7 @@ pub fn run() {
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(TrayState {
             tray: Mutex::new(None),
         })
@@ -481,7 +662,11 @@ pub fn run() {
             start_time_ms: Mutex::new(None),
             stop_tx: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![set_tray_title, clear_tray_title, set_tray_icon_color, reset_tray_icon, update_tray_menu, start_tray_timer, stop_tray_timer])
+        .manage(ReminderState {
+            stop_tx: Mutex::new(None),
+            last_notification_time: Mutex::new(None),
+        })
+        .invoke_handler(tauri::generate_handler![set_tray_title, clear_tray_title, set_tray_icon_color, reset_tray_icon, update_tray_menu, start_tray_timer, stop_tray_timer, start_reminder, stop_reminder])
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

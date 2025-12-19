@@ -47,6 +47,11 @@ async function initSchema() {
     ["show_timer_in_tray", "true"],
     ["stop_timer_when_idle", "false"],
     ["idle_timeout_minutes", "5"],
+    ["reminder_enabled", "false"],
+    ["reminder_interval_minutes", "30"],
+    ["reminder_start_time", "09:00"],
+    ["reminder_end_time", "18:00"],
+    ["reminder_weekdays", "1,2,3,4,5"], // Mon-Fri (0=Sun, 1=Mon, etc.)
   ];
   for (const [key, value] of defaultSettings) {
     await db.execute(
@@ -214,6 +219,11 @@ export interface AppSettings {
   show_timer_in_tray: boolean;
   stop_timer_when_idle: boolean;
   idle_timeout_minutes: number;
+  reminder_enabled: boolean;
+  reminder_interval_minutes: number;
+  reminder_start_time: string;
+  reminder_end_time: string;
+  reminder_weekdays: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -230,6 +240,11 @@ export async function getSettings(): Promise<AppSettings> {
     show_timer_in_tray: settings.show_timer_in_tray === "true",
     stop_timer_when_idle: settings.stop_timer_when_idle === "true",
     idle_timeout_minutes: parseInt(settings.idle_timeout_minutes || "5", 10),
+    reminder_enabled: settings.reminder_enabled === "true",
+    reminder_interval_minutes: parseInt(settings.reminder_interval_minutes || "30", 10),
+    reminder_start_time: settings.reminder_start_time || "09:00",
+    reminder_end_time: settings.reminder_end_time || "18:00",
+    reminder_weekdays: (settings.reminder_weekdays || "1,2,3,4,5").split(",").map(Number),
   };
 }
 

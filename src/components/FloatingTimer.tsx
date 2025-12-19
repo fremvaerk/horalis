@@ -3,7 +3,6 @@ import { GripVertical, Play, Square, ChevronDown } from "lucide-react";
 import { useTimerStore } from "../store";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);

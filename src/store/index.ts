@@ -98,6 +98,22 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     try {
       const settings = await getSettings();
       set({ settings });
+
+      // Initialize reminder system with settings
+      try {
+        await invoke("start_reminder", {
+          config: {
+            enabled: settings.reminder_enabled,
+            interval_minutes: settings.reminder_interval_minutes,
+            start_time: settings.reminder_start_time,
+            end_time: settings.reminder_end_time,
+            weekdays: settings.reminder_weekdays,
+          },
+        });
+      } catch (e) {
+        console.error("Failed to start reminder:", e);
+      }
+
       return settings;
     } catch (error) {
       console.error("Failed to load settings:", error);

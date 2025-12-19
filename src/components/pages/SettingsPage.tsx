@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, AlertTriangle, FolderKanban, Settings2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, AlertTriangle, FolderKanban, Settings2, Bell } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { getProjects, createProject, updateProject, deleteProject, Project, getSettings, updateSetting, AppSettings } from "../../lib/db";
+
+const WEEKDAYS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 0, label: "Sun" },
+];
 
 const PRESET_COLORS = [
   "#3B82F6", // blue
@@ -13,7 +24,7 @@ const PRESET_COLORS = [
   "#F97316", // orange
 ];
 
-type TabId = "projects" | "general";
+type TabId = "projects" | "general" | "reminders";
 
 interface ToggleProps {
   checked: boolean;
@@ -106,13 +117,35 @@ export default function SettingsPage() {
     }
   }
 
-  async function handleSettingChange(key: keyof AppSettings, value: boolean | number) {
+  async function handleSettingChange(key: keyof AppSettings, value: boolean | number | string) {
     if (!settings) return;
     try {
       await updateSetting(key, String(value));
-      setSettings({ ...settings, [key]: value });
+      const newSettings = { ...settings, [key]: value };
+      setSettings(newSettings);
+
+      // If it's a reminder-related setting, update the reminder system
+      if (key.startsWith("reminder_")) {
+        await updateReminderSystem(newSettings);
+      }
     } catch (error) {
       console.error("Failed to update setting:", error);
+    }
+  }
+
+  async function updateReminderSystem(newSettings: AppSettings) {
+    try {
+      await invoke("start_reminder", {
+        config: {
+          enabled: newSettings.reminder_enabled,
+          interval_minutes: newSettings.reminder_interval_minutes,
+          start_time: newSettings.reminder_start_time,
+          end_time: newSettings.reminder_end_time,
+          weekdays: newSettings.reminder_weekdays,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to update reminder:", error);
     }
   }
 
@@ -133,7 +166,28 @@ export default function SettingsPage() {
   const tabs = [
     { id: "projects" as const, label: "Projects", icon: FolderKanban },
     { id: "general" as const, label: "General", icon: Settings2 },
+    { id: "reminders" as const, label: "Reminders", icon: Bell },
   ];
+
+  async function handleWeekdayToggle(dayValue: number) {
+    if (!settings) return;
+    const currentDays = settings.reminder_weekdays;
+    let newDays: number[];
+    if (currentDays.includes(dayValue)) {
+      newDays = currentDays.filter((d) => d !== dayValue);
+    } else {
+      newDays = [...currentDays, dayValue].sort((a, b) => a - b);
+    }
+    // Save to DB as string
+    try {
+      await updateSetting("reminder_weekdays", newDays.join(","));
+      const newSettings = { ...settings, reminder_weekdays: newDays };
+      setSettings(newSettings);
+      await updateReminderSystem(newSettings);
+    } catch (error) {
+      console.error("Failed to update weekdays:", error);
+    }
+  }
 
   return (
     <div className="p-8">
@@ -380,6 +434,124 @@ export default function SettingsPage() {
                 checked={settings.stop_timer_when_idle}
                 onChange={(checked) => handleSettingChange("stop_timer_when_idle", checked)}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reminders Tab */}
+      {activeTab === "reminders" && settings && (
+        <div className="space-y-6">
+          <div className="bg-[#252525] rounded-xl overflow-hidden">
+            {/* Enable reminders */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+              <div>
+                <div className="font-medium">Enable tracking reminders</div>
+                <div className="text-sm text-gray-400 mt-0.5">
+                  Get notified when you're not tracking time during work hours
+                </div>
+              </div>
+              <Toggle
+                checked={settings.reminder_enabled}
+                onChange={(checked) => handleSettingChange("reminder_enabled", checked)}
+              />
+            </div>
+
+            {/* Reminder interval */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+              <div>
+                <div className="font-medium">Reminder interval</div>
+                <div className="text-sm text-gray-400 mt-0.5">
+                  How often to remind (in minutes)
+                </div>
+              </div>
+              <select
+                value={settings.reminder_interval_minutes}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  handleSettingChange("reminder_interval_minutes", value);
+                  setSettings({ ...settings, reminder_interval_minutes: value });
+                }}
+                disabled={!settings.reminder_enabled}
+                className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
+                  !settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <option value={5}>5 min</option>
+                <option value={10}>10 min</option>
+                <option value={15}>15 min</option>
+                <option value={20}>20 min</option>
+                <option value={30}>30 min</option>
+                <option value={45}>45 min</option>
+                <option value={60}>1 hour</option>
+                <option value={90}>1.5 hours</option>
+                <option value={120}>2 hours</option>
+              </select>
+            </div>
+
+            {/* Active hours */}
+            <div className="px-5 py-4 border-b border-white/5">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="font-medium">Active hours</div>
+                  <div className="text-sm text-gray-400 mt-0.5">
+                    Only remind during these hours
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="time"
+                  value={settings.reminder_start_time}
+                  onChange={(e) => {
+                    handleSettingChange("reminder_start_time", e.target.value);
+                    setSettings({ ...settings, reminder_start_time: e.target.value });
+                  }}
+                  disabled={!settings.reminder_enabled}
+                  className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
+                    !settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                />
+                <span className="text-gray-400">to</span>
+                <input
+                  type="time"
+                  value={settings.reminder_end_time}
+                  onChange={(e) => {
+                    handleSettingChange("reminder_end_time", e.target.value);
+                    setSettings({ ...settings, reminder_end_time: e.target.value });
+                  }}
+                  disabled={!settings.reminder_enabled}
+                  className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
+                    !settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Active days */}
+            <div className="px-5 py-4">
+              <div className="mb-3">
+                <div className="font-medium">Active days</div>
+                <div className="text-sm text-gray-400 mt-0.5">
+                  Only remind on these days
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {WEEKDAYS.map((day) => (
+                  <button
+                    key={day.value}
+                    onClick={() => handleWeekdayToggle(day.value)}
+                    disabled={!settings.reminder_enabled}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      settings.reminder_weekdays.includes(day.value)
+                        ? "bg-blue-600 text-white"
+                        : "bg-[#1a1a1a] text-gray-400 hover:bg-[#303030]"
+                    } ${!settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
