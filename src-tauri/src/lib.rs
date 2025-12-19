@@ -13,12 +13,78 @@ use ab_glyph::{FontRef, PxScale, Font};
 use tokio::sync::watch;
 use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{Local, Timelike, Datelike};
+use directories::ProjectDirs;
 
 /// Get idle time in seconds using system-idle-time crate
 fn get_idle_time_seconds() -> Option<u64> {
     match system_idle_time::get_idle_time() {
         Ok(duration) => Some(duration.as_secs()),
         Err(_) => None,
+    }
+}
+
+/// Stop any running time entries in the database (called on app exit)
+fn stop_running_time_entries() {
+    // Get the app data directory where tauri-plugin-sql stores the database
+    if let Some(proj_dirs) = ProjectDirs::from("", "", "com.timetracker.app") {
+        let db_path = proj_dirs.data_dir().join("timetracker.db");
+
+        // Also check the old-style path that tauri-plugin-sql might use
+        let alt_db_path = dirs::data_dir()
+            .map(|p| p.join("com.timetracker.app").join("timetracker.db"));
+
+        // Try both paths
+        let paths_to_try: Vec<std::path::PathBuf> = vec![
+            db_path,
+            alt_db_path.unwrap_or_default(),
+        ];
+
+        for db_path in paths_to_try {
+            if db_path.exists() {
+                if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                    let result = conn.execute(
+                        "UPDATE time_entries
+                         SET end_time = datetime('now'),
+                             duration = CAST((julianday(datetime('now')) - julianday(start_time)) * 86400 AS INTEGER)
+                         WHERE end_time IS NULL",
+                        [],
+                    );
+                    if let Ok(rows) = result {
+                        if rows > 0 {
+                            eprintln!("Stopped {} running time entry(ies) on app exit", rows);
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// Helper module for dirs crate compatibility
+mod dirs {
+    use std::path::PathBuf;
+
+    pub fn data_dir() -> Option<PathBuf> {
+        #[cfg(target_os = "macos")]
+        {
+            std::env::var("HOME").ok().map(|h| PathBuf::from(h).join("Library/Application Support"))
+        }
+        #[cfg(target_os = "windows")]
+        {
+            std::env::var("APPDATA").ok().map(PathBuf::from)
+        }
+        #[cfg(target_os = "linux")]
+        {
+            std::env::var("XDG_DATA_HOME")
+                .ok()
+                .map(PathBuf::from)
+                .or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".local/share")))
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+        {
+            None
+        }
     }
 }
 
@@ -685,6 +751,7 @@ pub fn run() {
                     let event_id = event.id.as_ref();
                     match event_id {
                         "quit" => {
+                            stop_running_time_entries();
                             app.exit(0);
                         }
                         "show" => {
