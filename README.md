@@ -4,12 +4,20 @@ A minimal, elegant time tracker with a floating window for macOS, Windows, and L
 
 *Horalis* — from Latin "of the hours"
 
+> **Work in Progress** — This project is under active development. Some features may be incomplete or change.
+
+---
+
+## About
+
+Horalis is a simple time tracking tool designed primarily for solo developers who want to track time spent on different projects. No complicated features, no team collaboration overhead — just a clean floating timer that stays out of your way while you work.
+
 ---
 
 ## Features
 
 - **Floating Timer Window** — Always-on-top compact timer that stays visible while you work
-- **Project & Task Tracking** — Organize time entries by projects and tasks
+- **Project Tracking** — Organize time entries by projects
 - **Daily Overview** — See your daily totals at a glance
 - **History & Reports** — Browse past entries and analyze your time
 - **Idle Detection** — Automatically detects when you're away
@@ -27,7 +35,7 @@ A minimal, elegant time tracker with a floating window for macOS, Windows, and L
 
 ### Download
 
-Download the latest release for your platform from the [Releases](https://github.com/yourusername/horalis/releases) page.
+Download the latest release for your platform from the [Releases](https://github.com/fremvaerk/horalis/releases) page.
 
 - **macOS**: `Horalis_x.x.x_aarch64.dmg` (Apple Silicon) or `Horalis_x.x.x_x64.dmg` (Intel)
 - **Windows**: `Horalis_x.x.x_x64-setup.exe`
@@ -42,7 +50,7 @@ Prerequisites:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/horalis.git
+git clone https://github.com/fremvaerk/horalis.git
 cd horalis
 
 # Install dependencies
@@ -65,10 +73,10 @@ pnpm tauri build
 ## Usage
 
 1. **Start the app** — The floating timer window appears
-2. **Enter a task** — Type what you're working on
-3. **Select a project** — Choose or create a project
-4. **Click Start** — Begin tracking your time
-5. **Open Dashboard** — Right-click the timer or use the menu to view history and reports
+2. **Open Dashboard** — Click the menu icon to open the dashboard
+3. **Create projects** — Go to Settings and add your projects
+4. **Select a project** — Back in the floating timer, choose a project
+5. **Click Start** — Begin tracking your time
 
 ### Keyboard Shortcuts
 
