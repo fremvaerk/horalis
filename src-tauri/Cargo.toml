@@ -1,12 +1,12 @@
 [package]
-name = "timetracker"
+name = "horalis"
 version = "0.1.0"
-description = "A minimal time tracker with floating window"
+description = "Horalis - A minimal time tracker"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "timetracker_lib"
+name = "horalis_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

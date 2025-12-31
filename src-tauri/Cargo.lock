@@ -1671,6 +1671,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "horalis"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "chrono",
+ "directories",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "system-idle-time",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-positioner",
+ "tauri-plugin-sql",
+ "tokio",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4722,27 +4743,6 @@ checksum = "30cfb0125f12d9c277f35663a0a33f8c30190f4e4574868a330595412d34ebf3"
 dependencies = [
  "num-conv",
  "time-core",
-]
-
-[[package]]
-name = "timetracker"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "chrono",
- "directories",
- "rusqlite",
- "serde",
- "serde_json",
- "system-idle-time",
- "tauri",
- "tauri-build",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-positioner",
- "tauri-plugin-sql",
- "tokio",
 ]
 
 [[package]]

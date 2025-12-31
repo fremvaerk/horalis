@@ -26,12 +26,12 @@ fn get_idle_time_seconds() -> Option<u64> {
 /// Stop any running time entries in the database (called on app exit)
 fn stop_running_time_entries() {
     // Get the app data directory where tauri-plugin-sql stores the database
-    if let Some(proj_dirs) = ProjectDirs::from("", "", "com.timetracker.app") {
-        let db_path = proj_dirs.data_dir().join("timetracker.db");
+    if let Some(proj_dirs) = ProjectDirs::from("", "", "com.horalis.app") {
+        let db_path = proj_dirs.data_dir().join("horalis.db");
 
         // Also check the old-style path that tauri-plugin-sql might use
         let alt_db_path = dirs::data_dir()
-            .map(|p| p.join("com.timetracker.app").join("timetracker.db"));
+            .map(|p| p.join("com.horalis.app").join("horalis.db"));
 
         // Try both paths
         let paths_to_try: Vec<std::path::PathBuf> = vec![
@@ -376,6 +376,7 @@ async fn start_tray_timer(
     // Spawn background task to update tray title every minute
     tauri::async_runtime::spawn(async move {
         let mut last_minutes = elapsed_secs / 60;
+        let mut last_check_time = SystemTime::now();
 
         loop {
             // Wait for ~10 seconds or until stopped
@@ -392,6 +393,24 @@ async fn start_tray_timer(
             if *stop_rx.borrow() {
                 return;
             }
+
+            // Detect system sleep: if 10-second sleep took much longer, system was suspended
+            let now_check = SystemTime::now();
+            let actual_elapsed = now_check.duration_since(last_check_time).unwrap_or_default();
+            if actual_elapsed.as_secs() > 30 {
+                // System was sleeping - emit event and stop timer
+                use tauri_plugin_notification::NotificationExt;
+                let sleep_mins = actual_elapsed.as_secs() / 60;
+                let _ = app_handle
+                    .notification()
+                    .builder()
+                    .title("Timer Stopped")
+                    .body(format!("Timer was stopped after {} minutes of system sleep.", sleep_mins))
+                    .show();
+                let _ = app_handle.emit("system-sleep", actual_elapsed.as_secs());
+                return;
+            }
+            last_check_time = now_check;
 
             // Get current start time (might have been cleared)
             let timer_state = app_handle.state::<NativeTimerState>();
@@ -626,7 +645,7 @@ async fn start_reminder(
             if let Err(e) = app_handle
                 .notification()
                 .builder()
-                .title("Time Tracker Reminder")
+                .title("Horalis Reminder")
                 .body("Don't forget to track your time!")
                 .show()
             {
@@ -775,7 +794,7 @@ pub fn run() {
                                     "dashboard",
                                     WebviewUrl::App("index.html#/dashboard".into()),
                                 )
-                                .title("Time Tracker")
+                                .title("Horalis")
                                 .inner_size(900.0, 650.0)
                                 .min_inner_size(700.0, 500.0)
                                 .resizable(true)

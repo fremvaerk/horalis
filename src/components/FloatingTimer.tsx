@@ -99,6 +99,17 @@ export default function FloatingTimer() {
     };
   }, [stopTimer]);
 
+  // Listen for system sleep detection from Rust backend
+  useEffect(() => {
+    const unlisten = listen<number>("system-sleep", (event) => {
+      console.log(`System sleep detected: ${event.payload} seconds`);
+      stopTimer();
+    });
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, [stopTimer]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       tick();

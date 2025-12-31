@@ -22,7 +22,7 @@ export default function Dashboard() {
         <div className="p-5 border-b border-white/10">
           <h1 className="text-lg font-semibold flex items-center gap-2">
             <Clock size={20} className="text-blue-500" />
-            Time Tracker
+            Horalis
           </h1>
         </div>
 

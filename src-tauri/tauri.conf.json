@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TimeTracker",
+  "productName": "Horalis",
   "version": "0.1.0",
-  "identifier": "com.timetracker.app",
+  "identifier": "com.horalis.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -15,7 +15,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Time Tracker",
+        "title": "Horalis",
         "width": 240,
         "height": 44,
         "decorations": false,
@@ -30,7 +30,7 @@
       },
       {
         "label": "dashboard",
-        "title": "Time Tracker",
+        "title": "Horalis",
         "url": "index.html#/dashboard",
         "width": 900,
         "height": 650,
