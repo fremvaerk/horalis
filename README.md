@@ -21,7 +21,7 @@ Horalis is a simple time tracking tool designed primarily for solo developers wh
 - **Daily Overview** — See your daily totals at a glance
 - **History & Reports** — Browse past entries and analyze your time
 - **Idle Detection** — Automatically detects when you're away
-- **Break Reminders** — Configurable notifications to remind you to take breaks
+- **Reminders** — Configurable notifications to remind you to track your time
 - **Native Performance** — Built with Tauri for a fast, lightweight experience
 - **Cross-Platform** — Works on macOS, Windows, and Linux
 
@@ -90,7 +90,7 @@ pnpm tauri build
 
 Settings are accessible from the Dashboard → Settings page:
 
-- **Break Reminders** — Set intervals for break notifications
+- **Reminders** — Set intervals to remind you to track your time
 - **Idle Timeout** — Configure when to pause tracking on inactivity
 - **Appearance** — Customize the floating window
 
