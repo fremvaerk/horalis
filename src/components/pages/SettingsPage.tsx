@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, Check, AlertTriangle, FolderKanban, Settings2, Bell } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, AlertTriangle, FolderKanban, Settings2, Bell, Pipette } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getProjects, createProject, updateProject, deleteProject, Project, getSettings, updateSetting, AppSettings } from "../../lib/db";
 
@@ -235,20 +235,10 @@ export default function SettingsPage() {
             {isAdding && (
               <div className="px-5 py-4 border-b border-white/5 bg-[#2a2a2a]">
                 <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <input
-                      type="color"
-                      value={newColor}
-                      onChange={(e) => setNewColor(e.target.value)}
-                      className="sr-only"
-                      id="new-color"
-                    />
-                    <label
-                      htmlFor="new-color"
-                      className="w-8 h-8 rounded-full cursor-pointer block border-2 border-white/20"
-                      style={{ backgroundColor: newColor }}
-                    />
-                  </div>
+                  <span
+                    className="w-8 h-8 rounded-full shrink-0 border-2 border-white/20"
+                    style={{ backgroundColor: newColor }}
+                  />
                   <input
                     type="text"
                     value={newName}
@@ -275,7 +265,7 @@ export default function SettingsPage() {
                   </button>
                 </div>
                 {/* Color presets */}
-                <div className="flex gap-2 mt-3 ml-12">
+                <div className="flex items-center gap-2 mt-3 ml-12">
                   {PRESET_COLORS.map((color) => (
                     <button
                       key={color}
@@ -286,6 +276,24 @@ export default function SettingsPage() {
                       style={{ backgroundColor: color }}
                     />
                   ))}
+                  <div className="relative">
+                    <input
+                      type="color"
+                      value={newColor}
+                      onChange={(e) => setNewColor(e.target.value)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      id="new-color"
+                    />
+                    <button
+                      className={`w-6 h-6 rounded-full border-2 border-dashed border-gray-500 flex items-center justify-center hover:border-gray-400 transition-colors ${
+                        !PRESET_COLORS.includes(newColor) ? "ring-2 ring-white ring-offset-2 ring-offset-[#2a2a2a]" : ""
+                      }`}
+                      style={{ backgroundColor: !PRESET_COLORS.includes(newColor) ? newColor : "transparent" }}
+                      title="Custom color"
+                    >
+                      <Pipette size={12} className={!PRESET_COLORS.includes(newColor) ? "text-white drop-shadow-md" : "text-gray-500"} />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -307,20 +315,10 @@ export default function SettingsPage() {
                     // Edit mode
                     <div>
                       <div className="flex items-center gap-4">
-                        <div className="relative">
-                          <input
-                            type="color"
-                            value={editColor}
-                            onChange={(e) => setEditColor(e.target.value)}
-                            className="sr-only"
-                            id={`edit-color-${project.id}`}
-                          />
-                          <label
-                            htmlFor={`edit-color-${project.id}`}
-                            className="w-8 h-8 rounded-full cursor-pointer block border-2 border-white/20"
-                            style={{ backgroundColor: editColor }}
-                          />
-                        </div>
+                        <span
+                          className="w-8 h-8 rounded-full shrink-0 border-2 border-white/20"
+                          style={{ backgroundColor: editColor }}
+                        />
                         <input
                           type="text"
                           value={editName}
@@ -346,7 +344,7 @@ export default function SettingsPage() {
                         </button>
                       </div>
                       {/* Color presets */}
-                      <div className="flex gap-2 mt-3 ml-12">
+                      <div className="flex items-center gap-2 mt-3 ml-12">
                         {PRESET_COLORS.map((color) => (
                           <button
                             key={color}
@@ -359,6 +357,24 @@ export default function SettingsPage() {
                             style={{ backgroundColor: color }}
                           />
                         ))}
+                        <div className="relative">
+                          <input
+                            type="color"
+                            value={editColor}
+                            onChange={(e) => setEditColor(e.target.value)}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            id={`edit-color-${project.id}`}
+                          />
+                          <button
+                            className={`w-6 h-6 rounded-full border-2 border-dashed border-gray-500 flex items-center justify-center hover:border-gray-400 transition-colors ${
+                              !PRESET_COLORS.includes(editColor) ? "ring-2 ring-white ring-offset-2 ring-offset-[#252525]" : ""
+                            }`}
+                            style={{ backgroundColor: !PRESET_COLORS.includes(editColor) ? editColor : "transparent" }}
+                            title="Custom color"
+                          >
+                            <Pipette size={12} className={!PRESET_COLORS.includes(editColor) ? "text-white drop-shadow-md" : "text-gray-500"} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ) : (
