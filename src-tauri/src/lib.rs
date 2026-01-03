@@ -764,6 +764,7 @@ pub fn run() {
             let initial_icon = Image::new_owned(initial_icon_data, 22, 22);
             let _tray = TrayIconBuilder::new()
                 .icon(initial_icon)
+                .tooltip("Horalis")
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| {
