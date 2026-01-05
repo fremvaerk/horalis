@@ -226,7 +226,7 @@ export default function FloatingTimer() {
         </div>
 
         {/* Spacer to keep timer clear of button overlap */}
-        <div className="w-5 shrink-0" />
+        <div className="w-7 shrink-0" />
       </div>
 
       {/* Play/Stop button - positioned to overlap the edge (half inside, half outside) */}
@@ -234,7 +234,7 @@ export default function FloatingTimer() {
         onClick={handleToggleTimer}
         onMouseDown={(e) => e.stopPropagation()}
         disabled={!selectedProject && !isRunning}
-        className={`absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer shadow-lg ${
+        className={`absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer shadow-lg ${
           isRunning
             ? "bg-red-500 hover:bg-red-600"
             : "bg-[#5BA4C4] hover:bg-[#4A93B3]"
