@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { MoreVertical, Trash2, Pencil, AlertTriangle, X } from "lucide-react";
-import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, TimeEntry, Project } from "../../lib/db";
+import { MoreVertical, Trash2, Pencil, AlertTriangle, X, Square } from "lucide-react";
+import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, getRunningEntry, stopTimeEntry, TimeEntry, Project } from "../../lib/db";
+import { invoke } from "@tauri-apps/api/core";
 
 interface EntryWithProject extends TimeEntry {
   project_name: string;
@@ -203,23 +204,64 @@ export default function HistoryPage() {
   const [editProjectId, setEditProjectId] = useState<number>(0);
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
+  const [runningEntry, setRunningEntry] = useState<EntryWithProject | null>(null);
+  const [runningElapsed, setRunningElapsed] = useState(0);
 
   useEffect(() => {
     loadData();
   }, []);
 
+  // Timer tick for running entry
+  useEffect(() => {
+    if (!runningEntry) return;
+
+    const interval = setInterval(() => {
+      const startTime = parseDbDate(runningEntry.start_time).getTime();
+      const now = Date.now();
+      setRunningElapsed(Math.floor((now - startTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [runningEntry]);
+
   async function loadData() {
     try {
-      const [entriesData, projectsData] = await Promise.all([
+      const [entriesData, projectsData, running] = await Promise.all([
         getTimeEntries(200),
         getProjects(),
+        getRunningEntry(),
       ]);
       setEntries(entriesData);
       setProjects(projectsData);
+      setRunningEntry(running);
+      if (running) {
+        const startTime = parseDbDate(running.start_time).getTime();
+        setRunningElapsed(Math.floor((Date.now() - startTime) / 1000));
+      }
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleStopTimer() {
+    if (!runningEntry) return;
+    try {
+      await stopTimeEntry(runningEntry.id);
+      // Stop tray timer and reset icon
+      await invoke("stop_tray_timer");
+      await invoke("reset_tray_icon");
+      // Update tray menu
+      await invoke("update_tray_menu", {
+        projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
+        isRunning: false,
+      });
+      setRunningEntry(null);
+      setRunningElapsed(0);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to stop timer:", error);
     }
   }
 
@@ -274,6 +316,50 @@ export default function HistoryPage() {
         <h1 className="text-2xl font-semibold">History</h1>
         <p className="text-gray-400 text-sm mt-1">View your tracked time entries</p>
       </header>
+
+      {/* Current running timer */}
+      {runningEntry && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            <span className="text-sm font-medium text-green-400">Running</span>
+          </div>
+          <div className="bg-[#252525] rounded-xl border border-green-500/30 overflow-hidden">
+            <div className="flex items-center gap-4 px-5 py-4">
+              {/* Project color and name */}
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <span
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: runningEntry.project_color }}
+                />
+                <span className="font-medium truncate">{runningEntry.project_name}</span>
+              </div>
+
+              {/* Start time */}
+              <div className="text-sm text-gray-400 shrink-0">
+                Started at {formatTime(runningEntry.start_time)}
+              </div>
+
+              {/* Duration */}
+              <div className="text-lg font-mono font-semibold text-green-400 w-24 text-right shrink-0 tabular-nums">
+                {formatEntryDuration(runningElapsed)}
+              </div>
+
+              {/* Stop button */}
+              <button
+                onClick={handleStopTimer}
+                className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors shrink-0"
+                title="Stop timer"
+              >
+                <Square size={12} className="text-white" fill="white" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         {dayGroups.length === 0 ? (

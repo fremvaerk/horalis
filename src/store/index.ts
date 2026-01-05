@@ -139,12 +139,14 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // Set tray icon to project color with first letter
     try {
       await invoke("set_tray_icon_color", { color: selectedProject.color, name: selectedProject.name });
-      // Start native background timer for tray title updates (only if setting enabled)
-      if (settings?.show_timer_in_tray !== false) {
+      // Start native background timer for tray title updates and/or idle detection
+      const showTrayTimer = settings?.show_timer_in_tray !== false;
+      const idleEnabled = settings?.stop_timer_when_idle ?? false;
+      if (showTrayTimer || idleEnabled) {
         const startTimeMs = Date.now();
         await invoke("start_tray_timer", {
           startTimeMs,
-          idleEnabled: settings?.stop_timer_when_idle ?? false,
+          idleEnabled,
           idleTimeoutMinutes: settings?.idle_timeout_minutes ?? 5,
         });
       }
@@ -207,12 +209,14 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     // Set tray icon to project color with first letter
     try {
       await invoke("set_tray_icon_color", { color: project.color, name: project.name });
-      // Start native background timer for tray title updates (only if setting enabled)
-      if (settings?.show_timer_in_tray !== false) {
+      // Start native background timer for tray title updates and/or idle detection
+      const showTrayTimer = settings?.show_timer_in_tray !== false;
+      const idleEnabled = settings?.stop_timer_when_idle ?? false;
+      if (showTrayTimer || idleEnabled) {
         const startTimeMs = Date.now();
         await invoke("start_tray_timer", {
           startTimeMs,
-          idleEnabled: settings?.stop_timer_when_idle ?? false,
+          idleEnabled,
           idleTimeoutMinutes: settings?.idle_timeout_minutes ?? 5,
         });
       }
@@ -253,11 +257,13 @@ export const useTimerStore = create<TimerState>((set, get) => ({
         // Set tray icon to project color with first letter if timer is running
         try {
           await invoke("set_tray_icon_color", { color: entry.project_color, name: entry.project_name });
-          // Start native background timer with the original start time (only if setting enabled)
-          if (settings?.show_timer_in_tray !== false) {
+          // Start native background timer with the original start time for tray updates and/or idle detection
+          const showTrayTimer = settings?.show_timer_in_tray !== false;
+          const idleEnabled = settings?.stop_timer_when_idle ?? false;
+          if (showTrayTimer || idleEnabled) {
             await invoke("start_tray_timer", {
               startTimeMs: startTime,
-              idleEnabled: settings?.stop_timer_when_idle ?? false,
+              idleEnabled,
               idleTimeoutMinutes: settings?.idle_timeout_minutes ?? 5,
             });
           }
