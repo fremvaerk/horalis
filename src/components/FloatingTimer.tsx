@@ -11,6 +11,18 @@ function formatTime(seconds: number): string {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function isWithinTimeWindow(startTime: string, endTime: string): boolean {
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [startH, startM] = startTime.split(':').map(Number);
+  const [endH, endM] = endTime.split(':').map(Number);
+  return currentMinutes >= startH * 60 + startM && currentMinutes <= endH * 60 + endM;
+}
+
+function isAllowedWeekday(weekdays: number[]): boolean {
+  return weekdays.includes(new Date().getDay());
+}
+
 export default function FloatingTimer() {
   const {
     projects,
@@ -20,6 +32,7 @@ export default function FloatingTimer() {
     elapsedSeconds,
     isLoading,
     error,
+    settings,
     loadProjects,
     loadSettings,
     loadCurrentEntry,
@@ -31,8 +44,35 @@ export default function FloatingTimer() {
   } = useTimerStore();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isBlinking, setIsBlinking] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const startupHandledRef = useRef(false);
+
+  // Blink effect when timer not running during active hours
+  useEffect(() => {
+    console.log('[Blink] Settings:', settings, 'isRunning:', isRunning);
+    if (!settings?.blink_enabled || isRunning) {
+      console.log('[Blink] Skipping - blink_enabled:', settings?.blink_enabled, 'isRunning:', isRunning);
+      setIsBlinking(false);
+      return;
+    }
+
+    const checkAndBlink = () => {
+      const inWindow = isWithinTimeWindow(settings.reminder_start_time, settings.reminder_end_time);
+      const allowedDay = isAllowedWeekday(settings.reminder_weekdays);
+      console.log('[Blink] Checking:', { inWindow, allowedDay, interval: settings.blink_interval_seconds });
+      if (inWindow && allowedDay) {
+        console.log('[Blink] Triggering blink!');
+        setIsBlinking(true);
+        setTimeout(() => setIsBlinking(false), 1000);
+      }
+    };
+
+    // Initial check
+    checkAndBlink();
+    const interval = setInterval(checkAndBlink, settings.blink_interval_seconds * 1000);
+    return () => clearInterval(interval);
+  }, [settings, isRunning]);
 
   // Resize window when dropdown opens/closes
   useEffect(() => {
@@ -165,7 +205,9 @@ export default function FloatingTimer() {
     <div className="relative h-11 select-none">
       {/* Main bar - extends under the button */}
       <div
-        className="absolute left-0 top-1/2 -translate-y-1/2 h-9 bg-[#1a1a1a] rounded-lg flex items-center px-1.5 gap-1 cursor-grab active:cursor-grabbing"
+        className={`absolute left-0 top-1/2 -translate-y-1/2 h-9 rounded-lg flex items-center px-1.5 gap-1 cursor-grab active:cursor-grabbing transition-colors duration-200 ${
+          isBlinking ? 'bg-yellow-600' : 'bg-[#1a1a1a]'
+        }`}
         onMouseDown={handleDragStart}
         style={{ width: 'calc(100% - 24px)', paddingTop: '2px', paddingBottom: '2px' }}
       >
@@ -185,7 +227,7 @@ export default function FloatingTimer() {
               className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: displayProject?.color || "#3B82F6" }}
             />
-            <span className="text-white text-base font-semibold truncate">
+            <span className={`text-base font-semibold truncate transition-colors duration-200 ${isBlinking ? 'text-black' : 'text-white'}`}>
               {displayProject?.name || "Select"}
             </span>
             <ChevronDown size={10} className="text-gray-400 shrink-0 ml-auto" />
@@ -221,7 +263,7 @@ export default function FloatingTimer() {
         </div>
 
         {/* Timer display */}
-        <div className="font-mono text-white text-base font-semibold tracking-wider tabular-nums">
+        <div className={`font-mono text-base font-semibold tracking-wider tabular-nums transition-colors duration-200 ${isBlinking ? 'text-black' : 'text-white'}`}>
           {formatTime(elapsedSeconds)}
         </div>
 

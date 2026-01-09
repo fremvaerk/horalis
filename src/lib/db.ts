@@ -52,6 +52,8 @@ async function initSchema() {
     ["reminder_start_time", "09:00"],
     ["reminder_end_time", "18:00"],
     ["reminder_weekdays", "1,2,3,4,5"], // Mon-Fri (0=Sun, 1=Mon, etc.)
+    ["blink_enabled", "false"],
+    ["blink_interval_seconds", "30"],
   ];
   for (const [key, value] of defaultSettings) {
     await db.execute(
@@ -224,6 +226,8 @@ export interface AppSettings {
   reminder_start_time: string;
   reminder_end_time: string;
   reminder_weekdays: number[]; // 0=Sun, 1=Mon, ..., 6=Sat
+  blink_enabled: boolean;
+  blink_interval_seconds: number;
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -245,6 +249,8 @@ export async function getSettings(): Promise<AppSettings> {
     reminder_start_time: settings.reminder_start_time || "09:00",
     reminder_end_time: settings.reminder_end_time || "18:00",
     reminder_weekdays: (settings.reminder_weekdays || "1,2,3,4,5").split(",").map(Number),
+    blink_enabled: settings.blink_enabled === "true",
+    blink_interval_seconds: parseInt(settings.blink_interval_seconds || "30", 10),
   };
 }
 

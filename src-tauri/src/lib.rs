@@ -469,10 +469,12 @@ async fn start_tray_timer(
 
 #[tauri::command]
 fn stop_tray_timer(app: tauri::AppHandle) {
+    println!("[Timer] stop_tray_timer called");
     let timer_state = app.state::<NativeTimerState>();
 
     // Clear start time
     *timer_state.start_time_ms.lock().unwrap() = None;
+    println!("[Timer] start_time_ms cleared");
 
     // Signal stop to background task
     {
@@ -580,8 +582,12 @@ async fn start_reminder(
 
     // If reminders are disabled, just return
     if !config.enabled {
+        println!("[Reminder] Reminders are disabled");
         return Ok(());
     }
+
+    println!("[Reminder] Starting reminder system: interval={}min, window={}-{}, weekdays={:?}",
+             config.interval_minutes, config.start_time, config.end_time, config.weekdays);
 
     // Create channel for stopping
     let (stop_tx, mut stop_rx) = watch::channel(false);
@@ -612,16 +618,19 @@ async fn start_reminder(
             let timer_state = app_handle.state::<NativeTimerState>();
             if timer_state.start_time_ms.lock().unwrap().is_some() {
                 // Timer is running, skip this check
+                println!("[Reminder] Skipping: timer is running");
                 continue;
             }
 
             // Check if current day is allowed
             if !is_allowed_weekday(&config.weekdays) {
+                println!("[Reminder] Skipping: current day not in allowed weekdays {:?}", config.weekdays);
                 continue;
             }
 
             // Check if current time is within window
             if !is_within_time_window(&config.start_time, &config.end_time) {
+                println!("[Reminder] Skipping: current time not in window {} - {}", config.start_time, config.end_time);
                 continue;
             }
 
@@ -642,14 +651,33 @@ async fn start_reminder(
             }
 
             // All conditions met - send notification
-            if let Err(e) = app_handle
+            println!("[Reminder] All conditions met! Sending notification...");
+
+            // Try Tauri notification first
+            let tauri_result = app_handle
                 .notification()
                 .builder()
                 .title("Horalis Reminder")
                 .body("Don't forget to track your time!")
-                .show()
+                .show();
+
+            match tauri_result {
+                Ok(_) => println!("[Reminder] Tauri notification sent"),
+                Err(e) => {
+                    eprintln!("[Reminder] Tauri notification failed: {}, trying osascript...", e);
+                }
+            }
+
+            // Also try osascript on macOS (works in dev mode)
+            #[cfg(target_os = "macos")]
             {
-                eprintln!("Failed to show notification: {}", e);
+                let _ = std::process::Command::new("osascript")
+                    .args([
+                        "-e",
+                        r#"display notification "Don't forget to track your time!" with title "Horalis Reminder""#,
+                    ])
+                    .output();
+                println!("[Reminder] osascript notification sent");
             }
 
             // Update last notification time

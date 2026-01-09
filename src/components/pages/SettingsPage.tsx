@@ -570,6 +570,56 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* Visual Alerts */}
+          <div className="bg-[#252525] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-white/5">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Visual Alerts</h3>
+            </div>
+
+            {/* Enable blink */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+              <div>
+                <div className="font-medium">Blink timer window</div>
+                <div className="text-sm text-gray-400 mt-0.5">
+                  Flash the timer window when not tracking during active hours
+                </div>
+              </div>
+              <Toggle
+                checked={settings.blink_enabled}
+                onChange={(checked) => handleSettingChange("blink_enabled", checked)}
+              />
+            </div>
+
+            {/* Blink interval */}
+            <div className="flex items-center justify-between px-5 py-4">
+              <div>
+                <div className="font-medium">Blink interval</div>
+                <div className="text-sm text-gray-400 mt-0.5">
+                  How often to blink (in seconds)
+                </div>
+              </div>
+              <select
+                value={settings.blink_interval_seconds}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  handleSettingChange("blink_interval_seconds", value);
+                  setSettings({ ...settings, blink_interval_seconds: value });
+                }}
+                disabled={!settings.blink_enabled}
+                className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
+                  !settings.blink_enabled ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <option value={15}>15 sec</option>
+                <option value={30}>30 sec</option>
+                <option value={45}>45 sec</option>
+                <option value={60}>1 min</option>
+                <option value={90}>1.5 min</option>
+                <option value={120}>2 min</option>
+              </select>
+            </div>
+          </div>
         </div>
       )}
 

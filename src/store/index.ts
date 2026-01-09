@@ -161,7 +161,7 @@ export const useTimerStore = create<TimerState>((set, get) => ({
   },
 
   stopTimer: async () => {
-    const { currentEntry, projects } = get();
+    const { currentEntry, projects, loadSettings } = get();
     if (!currentEntry) return;
 
     await stopTimeEntry(currentEntry.id);
@@ -182,6 +182,8 @@ export const useTimerStore = create<TimerState>((set, get) => ({
     } catch (e) {
       console.error("Failed to clear tray:", e);
     }
+    // Reload settings to get latest blink configuration
+    await loadSettings();
   },
 
   startTimerForProject: async (projectId: number) => {
