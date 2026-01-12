@@ -26,3 +26,6 @@ target
 
 .stuff
 .mcp.json
+
+**/CLAUDE.md
+!/CLAUDE.md
