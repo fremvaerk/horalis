@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, BarChart3, TrendingUp } from "lucide-react";
 
 interface ProjectInfo {
   id: number;
@@ -27,7 +27,7 @@ interface ProjectStats {
 interface DailyChartData {
   date: string;
   displayDate: string;
-  [key: string]: number | string; // project hours by name
+  [key: string]: number | string;
 }
 
 type ViewMode = "week" | "month";
@@ -49,7 +49,7 @@ function formatHours(seconds: number): string {
 function getWeekRange(date: Date): { start: Date; end: Date; label: string } {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const start = new Date(d.setDate(diff));
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
@@ -71,7 +71,6 @@ function getMonthRange(date: Date): { start: Date; end: Date; label: string } {
 }
 
 function toLocalDateString(date: Date): string {
-  // Format as YYYY-MM-DD in local timezone
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -112,8 +111,6 @@ export default function ReportsPage() {
       const startDate = toLocalDateString(range.start);
       const endDate = toLocalDateString(range.end);
 
-      // Get daily breakdown for chart
-      // Use 'localtime' modifier to convert UTC timestamps to local timezone for grouping
       const dailyRaw = await db.select<{ date: string; project_id: number; project_name: string; total: number }[]>(
         `SELECT date(start_time, 'localtime') as date, te.project_id, p.name as project_name, SUM(te.duration) as total
          FROM time_entries te
@@ -124,7 +121,6 @@ export default function ReportsPage() {
         [startDate, endDate]
       );
 
-      // Build chart data with all days in range
       const chartMap = new Map<string, DailyChartData>();
       const current = new Date(range.start);
       while (current <= range.end) {
@@ -134,7 +130,6 @@ export default function ReportsPage() {
           day: "numeric",
         });
         const entry: DailyChartData = { date: dateStr, displayDate: dayLabel };
-        // Initialize all projects to 0
         for (const p of projects) {
           entry[p.name] = 0;
         }
@@ -142,17 +137,15 @@ export default function ReportsPage() {
         current.setDate(current.getDate() + 1);
       }
 
-      // Fill in actual data
       for (const row of dailyRaw) {
         const entry = chartMap.get(row.date);
         if (entry) {
-          entry[row.project_name] = row.total / 3600; // Convert to hours
+          entry[row.project_name] = row.total / 3600;
         }
       }
 
       setChartData(Array.from(chartMap.values()));
 
-      // Get period totals by project
       const periodRaw = await db.select<ProjectStats[]>(
         `SELECT te.project_id, p.name as project_name, p.color as project_color,
                 SUM(te.duration) as total_duration
@@ -165,7 +158,6 @@ export default function ReportsPage() {
       );
       setPeriodStats(periodRaw);
 
-      // Calculate total
       const total = periodRaw.reduce((sum, p) => sum + p.total_duration, 0);
       setPeriodTotal(total);
     } catch (error) {
@@ -196,111 +188,235 @@ export default function ReportsPage() {
   if (isLoading && projects.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <span className="text-gray-400">Loading...</span>
+        <div className="flex items-center gap-3" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="w-5 h-5 border-2 rounded-full animate-spin"
+            style={{
+              borderColor: 'var(--border-default)',
+              borderTopColor: 'var(--accent-primary)'
+            }}
+          />
+          <span>Loading...</span>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Reports</h1>
-        <p className="text-gray-400 text-sm mt-1">Track your productivity over time</p>
+      {/* Header */}
+      <header className="mb-8 animate-fade-in-up">
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: 'var(--accent-primary-muted)' }}
+          >
+            <BarChart3 size={18} style={{ color: 'var(--accent-primary)' }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Track your productivity over time
+            </p>
+          </div>
+        </div>
       </header>
 
-      {/* View mode toggle and navigation */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
+      {/* Controls */}
+      <div
+        className="flex items-center justify-between mb-8 animate-fade-in-up"
+        style={{ animationDelay: '50ms' }}
+      >
+        {/* View toggle */}
+        <div
+          className="flex items-center p-1 rounded-xl"
+          style={{ background: 'var(--bg-surface)' }}
+        >
           <button
             onClick={() => setViewMode("week")}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              viewMode === "week"
-                ? "bg-[#5BA4C4] text-white"
-                : "bg-[#252525] text-gray-300 hover:bg-[#303030]"
-            }`}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+            style={{
+              background: viewMode === "week" ? 'var(--accent-primary)' : 'transparent',
+              color: viewMode === "week" ? 'var(--bg-base)' : 'var(--text-muted)',
+              boxShadow: viewMode === "week" ? 'var(--shadow-sm)' : 'none'
+            }}
           >
             Week
           </button>
           <button
             onClick={() => setViewMode("month")}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              viewMode === "month"
-                ? "bg-[#5BA4C4] text-white"
-                : "bg-[#252525] text-gray-300 hover:bg-[#303030]"
-            }`}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+            style={{
+              background: viewMode === "month" ? 'var(--accent-primary)' : 'transparent',
+              color: viewMode === "month" ? 'var(--bg-base)' : 'var(--text-muted)',
+              boxShadow: viewMode === "month" ? 'var(--shadow-sm)' : 'none'
+            }}
           >
             Month
           </button>
         </div>
 
+        {/* Navigation */}
         <div className="flex items-center gap-3">
           {!isCurrentPeriod && (
             <button
               onClick={goToToday}
-              className="px-3 py-1.5 rounded-lg text-sm bg-[#252525] text-gray-300 hover:bg-[#303030] transition-colors"
+              className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-default)',
+                color: 'var(--text-secondary)'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
+              onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border-default)'}
             >
               Today
             </button>
           )}
-          <button
-            onClick={() => navigate(-1)}
-            className="p-1.5 rounded-lg bg-[#252525] text-gray-300 hover:bg-[#303030] transition-colors"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <span className="text-sm font-medium min-w-[180px] text-center">{range.label}</span>
-          <button
-            onClick={() => navigate(1)}
-            className="p-1.5 rounded-lg bg-[#252525] text-gray-300 hover:bg-[#303030] transition-colors"
-          >
-            <ChevronRight size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(-1)}
+              className="p-2 rounded-xl transition-all duration-200"
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-secondary)'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--text-primary)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'var(--bg-card)';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+              }}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span
+              className="text-sm font-medium min-w-[180px] text-center"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              {range.label}
+            </span>
+            <button
+              onClick={() => navigate(1)}
+              className="p-2 rounded-xl transition-all duration-200"
+              style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-secondary)'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.color = 'var(--text-primary)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'var(--bg-card)';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+              }}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Summary card */}
-      <div className="bg-[#252525] rounded-xl p-5 mb-6">
-        <div className="text-sm text-gray-400 mb-1">
-          Total {viewMode === "week" ? "this week" : "this month"}
+      <div
+        className="rounded-2xl p-6 mb-6 animate-fade-in-up"
+        style={{
+          animationDelay: '100ms',
+          background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-surface) 100%)',
+          border: '1px solid var(--border-accent)',
+          boxShadow: 'var(--shadow-glow)'
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div
+              className="text-xs font-medium uppercase tracking-wider mb-2"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Total {viewMode === "week" ? "this week" : "this month"}
+            </div>
+            <div
+              className="text-4xl font-bold tracking-tight"
+              style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}
+            >
+              {formatHours(periodTotal)}
+            </div>
+          </div>
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center"
+            style={{ background: 'var(--accent-primary-muted)' }}
+          >
+            <TrendingUp size={24} style={{ color: 'var(--accent-primary)' }} />
+          </div>
         </div>
-        <div className="text-3xl font-semibold">{formatHours(periodTotal)}</div>
       </div>
 
-      {/* Stacked bar chart */}
-      <div className="bg-[#252525] rounded-xl p-5 mb-6">
-        <h2 className="text-lg font-medium mb-4">Daily Breakdown</h2>
+      {/* Chart */}
+      <div
+        className="rounded-2xl p-6 mb-6 animate-fade-in-up"
+        style={{
+          animationDelay: '150ms',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)'
+        }}
+      >
+        <h2
+          className="text-lg font-semibold mb-5"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          Daily Breakdown
+        </h2>
         {chartData.length === 0 || periodTotal === 0 ? (
-          <div className="text-gray-400 text-center py-12">No data for this period</div>
+          <div
+            className="text-center py-16"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <BarChart3
+              size={48}
+              className="mx-auto mb-4"
+              style={{ color: 'var(--text-faint)' }}
+            />
+            <p>No data for this period</p>
+          </div>
         ) : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <XAxis
                   dataKey="displayDate"
-                  tick={{ fill: "#9ca3af", fontSize: 12 }}
-                  axisLine={{ stroke: "#374151" }}
+                  tick={{ fill: '#71717a', fontSize: 11 }}
+                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fill: "#9ca3af", fontSize: 12 }}
-                  axisLine={{ stroke: "#374151" }}
+                  tick={{ fill: '#71717a', fontSize: 11 }}
+                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
                   tickLine={false}
                   tickFormatter={(value) => `${value}h`}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#1a1a1a",
-                    border: "1px solid #374151",
-                    borderRadius: "8px",
-                    fontSize: "13px",
+                    backgroundColor: '#161616',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '12px',
+                    fontSize: '13px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                   }}
-                  labelStyle={{ color: "#fff", marginBottom: "4px" }}
-                  itemStyle={{ padding: "2px 0" }}
+                  labelStyle={{ color: '#fff', marginBottom: '8px', fontWeight: 500 }}
+                  itemStyle={{ padding: '3px 0' }}
                   formatter={(value: number, name: string) => [`${value.toFixed(1)}h`, name]}
+                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                 />
                 <Legend
-                  wrapperStyle={{ paddingTop: "16px" }}
-                  formatter={(value) => <span style={{ color: "#d1d5db", fontSize: "13px" }}>{value}</span>}
+                  wrapperStyle={{ paddingTop: '20px' }}
+                  formatter={(value) => (
+                    <span style={{ color: '#a1a1aa', fontSize: '12px', marginLeft: '4px' }}>{value}</span>
+                  )}
                 />
                 {projects.map((project) => (
                   <Bar
@@ -308,7 +424,7 @@ export default function ReportsPage() {
                     dataKey={project.name}
                     stackId="a"
                     fill={project.color}
-                    radius={[0, 0, 0, 0]}
+                    radius={[4, 4, 0, 0]}
                   />
                 ))}
               </BarChart>
@@ -317,33 +433,70 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Project breakdown for period */}
-      <div className="bg-[#252525] rounded-xl overflow-hidden">
-        <h2 className="text-lg font-medium px-5 pt-5 pb-3">By Project</h2>
+      {/* Project breakdown */}
+      <div
+        className="rounded-2xl overflow-hidden animate-fade-in-up"
+        style={{
+          animationDelay: '200ms',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-subtle)'
+        }}
+      >
+        <h2
+          className="text-lg font-semibold px-6 pt-6 pb-4"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          By Project
+        </h2>
         {periodStats.length === 0 ? (
-          <div className="text-gray-400 text-center py-8">No tracked time for this period</div>
+          <div
+            className="text-center py-12"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            No tracked time for this period
+          </div>
         ) : (
           periodStats.map((proj, index) => {
             const percentage = periodTotal > 0 ? (proj.total_duration / periodTotal) * 100 : 0;
             return (
               <div
                 key={proj.project_id}
-                className={`px-5 py-4 ${
-                  index !== periodStats.length - 1 ? "border-b border-white/5" : ""
-                }`}
+                className="px-6 py-4 transition-colors duration-150"
+                style={{
+                  borderBottom: index !== periodStats.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <div className="flex items-center gap-3 mb-2">
-                  <span
-                    className="w-3 h-3 rounded-full shrink-0"
+                <div className="flex items-center gap-4 mb-3">
+                  <div
+                    className="w-3 h-3 rounded-md shrink-0"
                     style={{ backgroundColor: proj.project_color }}
                   />
                   <span className="flex-1 font-medium">{proj.project_name}</span>
-                  <span className="text-gray-400 text-sm">{percentage.toFixed(0)}%</span>
-                  <span className="font-medium w-20 text-right">{formatDuration(proj.total_duration)}</span>
+                  <span
+                    className="text-xs px-2 py-1 rounded-md"
+                    style={{
+                      background: 'var(--bg-surface)',
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-mono)'
+                    }}
+                  >
+                    {percentage.toFixed(0)}%
+                  </span>
+                  <span
+                    className="font-medium w-24 text-right tabular-nums"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    {formatDuration(proj.total_duration)}
+                  </span>
                 </div>
-                <div className="h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden ml-6">
+                <div
+                  className="h-1.5 rounded-full overflow-hidden ml-7"
+                  style={{ background: 'var(--bg-surface)' }}
+                >
                   <div
-                    className="h-full rounded-full transition-all"
+                    className="h-full rounded-full transition-all duration-500"
                     style={{
                       backgroundColor: proj.project_color,
                       width: `${percentage}%`,

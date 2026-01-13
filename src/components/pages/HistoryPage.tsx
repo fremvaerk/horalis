@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MoreVertical, Trash2, Pencil, AlertTriangle, X, Square } from "lucide-react";
+import { MoreVertical, Trash2, Pencil, AlertTriangle, X, Square, Clock, Calendar } from "lucide-react";
 import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, getRunningEntry, stopTimeEntry, TimeEntry, Project } from "../../lib/db";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -44,7 +44,6 @@ function formatEntryDuration(seconds: number): string {
 }
 
 function parseDbDate(dateStr: string): Date {
-  // Handle both SQLite format (2025-12-11 09:00:44) and ISO format (2025-12-11T09:00:44Z)
   if (dateStr.includes("T")) {
     return new Date(dateStr);
   }
@@ -57,7 +56,6 @@ function formatTime(dateStr: string): string {
 }
 
 function getDateKey(dateStr: string): string {
-  // Handle both formats
   if (dateStr.includes("T")) {
     return dateStr.split("T")[0];
   }
@@ -83,10 +81,10 @@ function formatDisplayDate(dateKey: string): string {
     return "Yesterday";
   } else {
     const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${weekday}, ${day}.${month}.${year}`;
+    const d = String(date.getDate()).padStart(2, "0");
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const y = date.getFullYear();
+    return `${weekday}, ${d}.${m}.${y}`;
   }
 }
 
@@ -105,7 +103,6 @@ function groupEntriesByDay(entries: EntryWithProject[]): DayGroup[] {
   for (const [dateKey, dayEntries] of groups) {
     const totalDuration = dayEntries.reduce((sum, e) => sum + (e.duration || 0), 0);
 
-    // Calculate project breakdown
     const projectTotals = new Map<number, { name: string; color: string; seconds: number }>();
     for (const entry of dayEntries) {
       const existing = projectTotals.get(entry.project_id);
@@ -161,15 +158,18 @@ function DaySummaryBar({ breakdown }: { breakdown: ProjectSummary[] }) {
 
   return (
     <div className="relative">
-      <div className="flex h-2 rounded-full overflow-hidden bg-[#1a1a1a]">
+      <div
+        className="flex h-1.5 rounded-full overflow-hidden"
+        style={{ background: 'var(--bg-surface)' }}
+      >
         {breakdown.map((project, index) => (
           <div
             key={project.projectId}
-            className="relative h-full transition-opacity hover:opacity-80"
+            className="relative h-full transition-all duration-200 hover:opacity-80 cursor-pointer"
             style={{
               backgroundColor: project.projectColor,
               width: `${Math.max(project.percentage, 2)}%`,
-              marginLeft: index > 0 ? "1px" : 0,
+              marginLeft: index > 0 ? "2px" : 0,
             }}
             onMouseEnter={() => setHoveredProject(project)}
             onMouseLeave={() => setHoveredProject(null)}
@@ -177,16 +177,26 @@ function DaySummaryBar({ breakdown }: { breakdown: ProjectSummary[] }) {
         ))}
       </div>
 
-      {/* Tooltip */}
       {hoveredProject && (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 bg-[#1a1a1a] border border-white/10 rounded text-xs whitespace-nowrap z-50 shadow-lg">
+        <div
+          className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 rounded-lg text-xs whitespace-nowrap z-50 animate-fade-in"
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-default)',
+            boxShadow: 'var(--shadow-lg)'
+          }}
+        >
           <div className="flex items-center gap-2">
             <span
               className="w-2 h-2 rounded-full"
               style={{ backgroundColor: hoveredProject.projectColor }}
             />
-            <span className="font-medium">{hoveredProject.projectName}</span>
-            <span className="text-gray-400">{formatDuration(hoveredProject.totalSeconds)}</span>
+            <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+              {hoveredProject.projectName}
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              {formatDuration(hoveredProject.totalSeconds)}
+            </span>
           </div>
         </div>
       )}
@@ -211,7 +221,6 @@ export default function HistoryPage() {
     loadData();
   }, []);
 
-  // Timer tick for running entry
   useEffect(() => {
     if (!runningEntry) return;
 
@@ -249,10 +258,8 @@ export default function HistoryPage() {
     if (!runningEntry) return;
     try {
       await stopTimeEntry(runningEntry.id);
-      // Stop tray timer and reset icon
       await invoke("stop_tray_timer");
       await invoke("reset_tray_icon");
-      // Update tray menu
       await invoke("update_tray_menu", {
         projects: projects.map(p => ({ id: p.id, name: p.name, color: p.color })),
         isRunning: false,
@@ -305,76 +312,164 @@ export default function HistoryPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <span className="text-gray-400">Loading...</span>
+        <div className="flex items-center gap-3" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="w-5 h-5 border-2 rounded-full animate-spin"
+            style={{
+              borderColor: 'var(--border-default)',
+              borderTopColor: 'var(--accent-primary)'
+            }}
+          />
+          <span>Loading...</span>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-8">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold">History</h1>
-        <p className="text-gray-400 text-sm mt-1">View your tracked time entries</p>
+      {/* Header */}
+      <header className="mb-8 animate-fade-in-up">
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{
+              background: 'var(--accent-primary-muted)',
+            }}
+          >
+            <Clock size={18} style={{ color: 'var(--accent-primary)' }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">History</h1>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Your tracked time entries
+            </p>
+          </div>
+        </div>
       </header>
 
-      {/* Current running timer */}
+      {/* Running timer card */}
       {runningEntry && (
-        <div className="mb-6">
+        <div className="mb-8 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
           <div className="flex items-center gap-2 mb-3">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              <span
+                className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                style={{ background: 'var(--accent-success)' }}
+              />
+              <span
+                className="relative inline-flex rounded-full h-2 w-2"
+                style={{ background: 'var(--accent-success)' }}
+              />
             </span>
-            <span className="text-sm font-medium text-green-400">Running</span>
+            <span
+              className="text-xs font-medium uppercase tracking-wider"
+              style={{ color: 'var(--accent-success)' }}
+            >
+              Currently Running
+            </span>
           </div>
-          <div className="bg-[#252525] rounded-xl border border-green-500/30 overflow-hidden">
-            <div className="flex items-center gap-4 px-5 py-4">
-              {/* Project color and name */}
+
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--accent-success)',
+              boxShadow: '0 0 30px rgba(34, 197, 94, 0.1)'
+            }}
+          >
+            <div className="flex items-center gap-5 px-6 py-5">
+              {/* Project */}
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <span
-                  className="w-3 h-3 rounded-full shrink-0"
+                <div
+                  className="w-4 h-4 rounded-md shrink-0"
                   style={{ backgroundColor: runningEntry.project_color }}
                 />
-                <span className="font-medium truncate">{runningEntry.project_name}</span>
+                <span className="font-medium text-lg truncate">
+                  {runningEntry.project_name}
+                </span>
               </div>
 
               {/* Start time */}
-              <div className="text-sm text-gray-400 shrink-0">
-                Started at {formatTime(runningEntry.start_time)}
+              <div
+                className="flex items-center gap-2 text-sm shrink-0 px-3 py-1.5 rounded-lg"
+                style={{
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <Clock size={14} />
+                Started {formatTime(runningEntry.start_time)}
               </div>
 
               {/* Duration */}
-              <div className="text-lg font-mono font-semibold text-green-400 w-24 text-right shrink-0 tabular-nums">
+              <div
+                className="text-2xl font-semibold w-28 text-right shrink-0 tabular-nums tracking-tight"
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--accent-success)'
+                }}
+              >
                 {formatEntryDuration(runningElapsed)}
               </div>
 
               {/* Stop button */}
               <button
                 onClick={handleStopTimer}
-                className="w-8 h-8 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors shrink-0"
+                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 shrink-0"
+                style={{
+                  background: 'var(--accent-danger)',
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                 title="Stop timer"
               >
-                <Square size={12} className="text-white" fill="white" />
+                <Square size={14} className="text-white" fill="white" />
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="space-y-6">
+      {/* Day groups */}
+      <div className="space-y-8">
         {dayGroups.length === 0 ? (
-          <div className="text-center text-gray-400 py-12 bg-[#252525] rounded-xl">
-            No time entries yet. Start tracking to see your history.
+          <div
+            className="text-center py-16 rounded-2xl animate-fade-in-up"
+            style={{ background: 'var(--bg-card)' }}
+          >
+            <Calendar
+              size={48}
+              className="mx-auto mb-4"
+              style={{ color: 'var(--text-faint)' }}
+            />
+            <p className="font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+              No time entries yet
+            </p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Start tracking to see your history
+            </p>
           </div>
         ) : (
-          dayGroups.map((group) => (
-            <div key={group.date} className="space-y-3">
+          dayGroups.map((group, groupIndex) => (
+            <div
+              key={group.date}
+              className="space-y-4 animate-fade-in-up"
+              style={{ animationDelay: `${(groupIndex + 1) * 50}ms` }}
+            >
               {/* Day header */}
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-300">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   {group.displayDate}
                 </span>
-                <span className="text-sm text-gray-500">
+                <span
+                  className="text-xs px-2 py-1 rounded-md"
+                  style={{
+                    background: 'var(--bg-hover)',
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)'
+                  }}
+                >
                   {formatDuration(group.totalDuration)}
                 </span>
               </div>
@@ -382,59 +477,98 @@ export default function HistoryPage() {
               {/* Summary bar */}
               <DaySummaryBar breakdown={group.projectBreakdown} />
 
-              {/* Entries for this day */}
-              <div className="bg-[#252525] rounded-xl overflow-hidden">
+              {/* Entries */}
+              <div
+                className="rounded-xl overflow-hidden"
+                style={{
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border-subtle)'
+                }}
+              >
                 {group.entries.map((entry, index) => (
                   <div
                     key={entry.id}
-                    className={`flex items-center gap-4 px-5 py-4 hover:bg-white/5 group ${
-                      index !== group.entries.length - 1 ? "border-b border-white/5" : ""
-                    }`}
+                    className="flex items-center gap-4 px-5 py-4 group transition-colors duration-150"
+                    style={{
+                      borderBottom: index !== group.entries.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                   >
-                    {/* Project color and name */}
+                    {/* Project */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <span
-                        className="w-3 h-3 rounded-full shrink-0"
+                      <div
+                        className="w-3 h-3 rounded-md shrink-0"
                         style={{ backgroundColor: entry.project_color }}
                       />
                       <span className="font-medium truncate">{entry.project_name}</span>
                     </div>
 
                     {/* Time range */}
-                    <div className="text-sm text-gray-400 shrink-0">
-                      {formatTime(entry.start_time)} -{" "}
-                      {entry.end_time ? formatTime(entry.end_time) : "..."}
+                    <div
+                      className="text-sm shrink-0"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {formatTime(entry.start_time)} - {entry.end_time ? formatTime(entry.end_time) : "..."}
                     </div>
 
                     {/* Duration */}
-                    <div className="text-sm font-medium text-gray-300 w-20 text-right shrink-0">
+                    <div
+                      className="text-sm font-medium w-20 text-right shrink-0 tabular-nums"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-secondary)'
+                      }}
+                    >
                       {formatEntryDuration(entry.duration || 0)}
                     </div>
 
-                    {/* Menu button */}
+                    {/* Menu */}
                     <div className="relative">
                       <button
                         onClick={() => setMenuOpen(menuOpen === entry.id ? null : entry.id)}
-                        className="p-2 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-150"
+                        style={{ color: 'var(--text-muted)' }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-active)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                       >
-                        <MoreVertical size={16} className="text-gray-400" />
+                        <MoreVertical size={16} />
                       </button>
 
                       {menuOpen === entry.id && (
-                        <div className="absolute right-0 top-full mt-1 w-36 bg-[#333] rounded-lg shadow-xl border border-white/10 py-1 z-50">
+                        <div
+                          className="absolute right-0 top-full mt-1 w-40 rounded-xl py-1.5 z-50 animate-scale-in"
+                          style={{
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border-default)',
+                            boxShadow: 'var(--shadow-lg)'
+                          }}
+                        >
                           <button
                             onClick={() => openEditModal(entry)}
-                            className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-white/10"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
+                            style={{ color: 'var(--text-secondary)' }}
+                            onMouseOver={(e) => {
+                              e.currentTarget.style.background = 'var(--bg-hover)';
+                              e.currentTarget.style.color = 'var(--text-primary)';
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.color = 'var(--text-secondary)';
+                            }}
                           >
                             <Pencil size={14} />
-                            Edit
+                            Edit entry
                           </button>
                           <button
                             onClick={() => {
                               setDeleteConfirm(entry);
                               setMenuOpen(null);
                             }}
-                            className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-white/10 text-red-400"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors"
+                            style={{ color: 'var(--accent-danger)' }}
+                            onMouseOver={(e) => e.currentTarget.style.background = 'var(--accent-danger-muted)'}
+                            onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <Trash2 size={14} />
                             Delete
@@ -452,32 +586,74 @@ export default function HistoryPage() {
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#252525] rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                <AlertTriangle size={20} className="text-red-500" />
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+        >
+          <div
+            className="rounded-2xl p-6 max-w-sm w-full mx-4 animate-scale-in"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-default)',
+              boxShadow: 'var(--shadow-lg)'
+            }}
+          >
+            <div className="flex items-center gap-4 mb-5">
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center"
+                style={{ background: 'var(--accent-danger-muted)' }}
+              >
+                <AlertTriangle size={22} style={{ color: 'var(--accent-danger)' }} />
               </div>
-              <h3 className="text-lg font-semibold">Delete Entry</h3>
+              <div>
+                <h3 className="text-lg font-semibold">Delete Entry</h3>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  This action cannot be undone
+                </p>
+              </div>
             </div>
-            <p className="text-gray-300 mb-2">
-              Are you sure you want to delete this time entry?
-            </p>
-            <p className="text-gray-400 text-sm mb-6">
-              <strong>{deleteConfirm.project_name}</strong> - {formatTime(deleteConfirm.start_time)} to {deleteConfirm.end_time ? formatTime(deleteConfirm.end_time) : "..."} ({formatEntryDuration(deleteConfirm.duration || 0)})
-            </p>
+
+            <div
+              className="p-4 rounded-xl mb-6"
+              style={{ background: 'var(--bg-surface)' }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div
+                  className="w-2.5 h-2.5 rounded-sm"
+                  style={{ backgroundColor: deleteConfirm.project_color }}
+                />
+                <span className="font-medium">{deleteConfirm.project_name}</span>
+              </div>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {formatTime(deleteConfirm.start_time)} - {deleteConfirm.end_time ? formatTime(deleteConfirm.end_time) : "..."}
+                <span className="mx-2">·</span>
+                <span style={{ fontFamily: 'var(--font-mono)' }}>
+                  {formatEntryDuration(deleteConfirm.duration || 0)}
+                </span>
+              </p>
+            </div>
+
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#303030] text-gray-300 transition-colors"
+                className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'var(--bg-surface)'}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+                className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+                style={{ background: 'var(--accent-danger)' }}
+                onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
               >
-                Delete
+                Delete Entry
               </button>
             </div>
           </div>
@@ -486,26 +662,48 @@ export default function HistoryPage() {
 
       {/* Edit modal */}
       {editEntry && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#252525] rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+        >
+          <div
+            className="rounded-2xl p-6 max-w-md w-full mx-4 animate-scale-in"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-default)',
+              boxShadow: 'var(--shadow-lg)'
+            }}
+          >
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold">Edit Time Entry</h3>
               <button
                 onClick={() => setEditEntry(null)}
-                className="p-1 hover:bg-white/10 rounded"
+                className="p-2 rounded-lg transition-colors"
+                style={{ color: 'var(--text-muted)' }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <X size={20} className="text-gray-400" />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-4">
-              {/* Project selector */}
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Project</label>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Project
+                </label>
                 <select
                   value={editProjectId}
                   onChange={(e) => setEditProjectId(Number(e.target.value))}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)'
+                  }}
                 >
                   {projects.map((project) => (
                     <option key={project.id} value={project.id}>
@@ -515,25 +713,43 @@ export default function HistoryPage() {
                 </select>
               </div>
 
-              {/* Start time */}
               <div>
-                <label className="block text-sm text-gray-400 mb-2">Start Time</label>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Start Time
+                </label>
                 <input
                   type="datetime-local"
                   value={editStartTime}
                   onChange={(e) => setEditStartTime(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)'
+                  }}
                 />
               </div>
 
-              {/* End time */}
               <div>
-                <label className="block text-sm text-gray-400 mb-2">End Time</label>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  End Time
+                </label>
                 <input
                   type="datetime-local"
                   value={editEndTime}
                   onChange={(e) => setEditEndTime(e.target.value)}
-                  className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)'
+                  }}
                 />
               </div>
             </div>
@@ -541,16 +757,32 @@ export default function HistoryPage() {
             <div className="flex gap-3 justify-end mt-6">
               <button
                 onClick={() => setEditEntry(null)}
-                className="px-4 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#303030] text-gray-300 transition-colors"
+                className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'var(--bg-surface)'}
               >
                 Cancel
               </button>
               <button
                 onClick={handleEdit}
                 disabled={!editStartTime || !editEndTime}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: 'var(--accent-primary)',
+                  color: 'var(--bg-base)'
+                }}
+                onMouseOver={(e) => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.boxShadow = 'var(--shadow-glow)';
+                  }
+                }}
+                onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
               >
-                Save
+                Save Changes
               </button>
             </div>
           </div>

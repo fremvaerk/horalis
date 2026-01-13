@@ -36,15 +36,22 @@ function Toggle({ checked, onChange, disabled }: ToggleProps) {
   return (
     <button
       onClick={() => !disabled && onChange(!checked)}
-      className={`relative w-11 h-6 rounded-full transition-colors ${
-        checked ? "bg-blue-600" : "bg-[#404040]"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+      className="relative w-12 h-7 rounded-full transition-all duration-200"
+      style={{
+        background: checked ? 'var(--accent-primary)' : 'var(--bg-active)',
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        boxShadow: checked ? 'var(--shadow-glow)' : 'none'
+      }}
       disabled={disabled}
     >
       <span
-        className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
-          checked ? "translate-x-5" : "translate-x-0"
-        }`}
+        className="absolute top-1 left-1 w-5 h-5 rounded-full transition-transform duration-200"
+        style={{
+          background: 'white',
+          transform: checked ? 'translateX(20px)' : 'translateX(0)',
+          boxShadow: 'var(--shadow-sm)'
+        }}
       />
     </button>
   );
@@ -124,7 +131,6 @@ export default function SettingsPage() {
       const newSettings = { ...settings, [key]: value };
       setSettings(newSettings);
 
-      // If it's a reminder-related setting, update the reminder system
       if (key.startsWith("reminder_")) {
         await updateReminderSystem(newSettings);
       }
@@ -155,20 +161,6 @@ export default function SettingsPage() {
     setEditColor(project.color);
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <span className="text-gray-400">Loading...</span>
-      </div>
-    );
-  }
-
-  const tabs = [
-    { id: "projects" as const, label: "Projects", icon: FolderKanban },
-    { id: "general" as const, label: "General", icon: Settings2 },
-    { id: "reminders" as const, label: "Reminders", icon: Bell },
-  ];
-
   async function handleWeekdayToggle(dayValue: number) {
     if (!settings) return;
     const currentDays = settings.reminder_weekdays;
@@ -178,7 +170,6 @@ export default function SettingsPage() {
     } else {
       newDays = [...currentDays, dayValue].sort((a, b) => a - b);
     }
-    // Save to DB as string
     try {
       await updateSetting("reminder_weekdays", newDays.join(","));
       const newSettings = { ...settings, reminder_weekdays: newDays };
@@ -189,24 +180,64 @@ export default function SettingsPage() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex items-center gap-3" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="w-5 h-5 border-2 rounded-full animate-spin"
+            style={{
+              borderColor: 'var(--border-default)',
+              borderTopColor: 'var(--accent-primary)'
+            }}
+          />
+          <span>Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  const tabs = [
+    { id: "projects" as const, label: "Projects", icon: FolderKanban },
+    { id: "general" as const, label: "General", icon: Settings2 },
+    { id: "reminders" as const, label: "Reminders", icon: Bell },
+  ];
+
   return (
     <div className="p-8">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-gray-400 text-sm mt-1">Manage your projects and preferences</p>
+      {/* Header */}
+      <header className="mb-8 animate-fade-in-up">
+        <div className="flex items-center gap-3 mb-2">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: 'var(--accent-primary-muted)' }}
+          >
+            <Settings2 size={18} style={{ color: 'var(--accent-primary)' }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Manage your projects and preferences
+            </p>
+          </div>
+        </div>
       </header>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-[#1a1a1a] p-1 rounded-lg w-fit">
+      <div
+        className="flex gap-1 mb-8 p-1.5 rounded-xl w-fit animate-fade-in-up"
+        style={{ background: 'var(--bg-surface)', animationDelay: '50ms' }}
+      >
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? "bg-[#303030] text-white"
-                : "text-gray-400 hover:text-gray-300"
-            }`}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
+            style={{
+              background: activeTab === tab.id ? 'var(--bg-card)' : 'transparent',
+              color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-muted)',
+              boxShadow: activeTab === tab.id ? 'var(--shadow-sm)' : 'none'
+            }}
           >
             <tab.icon size={16} />
             {tab.label}
@@ -216,13 +247,19 @@ export default function SettingsPage() {
 
       {/* Projects Tab */}
       {activeTab === "projects" && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium">Projects</h2>
+        <div className="animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+          <div className="flex justify-between items-center mb-5">
+            <h2 className="text-lg font-semibold">Projects</h2>
             {!isAdding && (
               <button
                 onClick={() => setIsAdding(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                style={{
+                  background: 'var(--accent-primary)',
+                  color: 'var(--bg-base)'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.boxShadow = 'var(--shadow-glow)'}
+                onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
               >
                 <Plus size={16} />
                 Add Project
@@ -230,21 +267,32 @@ export default function SettingsPage() {
             )}
           </div>
 
-          <div className="bg-[#252525] rounded-xl overflow-hidden">
-            {/* Add new project form */}
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+          >
+            {/* Add form */}
             {isAdding && (
-              <div className="px-5 py-4 border-b border-white/5 bg-[#2a2a2a]">
+              <div
+                className="px-5 py-5"
+                style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}
+              >
                 <div className="flex items-center gap-4">
-                  <span
-                    className="w-8 h-8 rounded-full shrink-0 border-2 border-white/20"
-                    style={{ backgroundColor: newColor }}
+                  <div
+                    className="w-10 h-10 rounded-xl shrink-0"
+                    style={{ backgroundColor: newColor, boxShadow: 'var(--shadow-sm)' }}
                   />
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Project name"
-                    className="flex-1 bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                    className="flex-1 rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                    style={{
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-default)',
+                      color: 'var(--text-primary)'
+                    }}
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleCreate();
@@ -253,27 +301,33 @@ export default function SettingsPage() {
                   />
                   <button
                     onClick={handleCreate}
-                    className="p-2 hover:bg-white/10 rounded-lg text-green-500"
+                    className="p-2.5 rounded-xl transition-colors"
+                    style={{ background: 'var(--accent-success-muted)', color: 'var(--accent-success)' }}
                   >
                     <Check size={18} />
                   </button>
                   <button
                     onClick={() => setIsAdding(false)}
-                    className="p-2 hover:bg-white/10 rounded-lg text-gray-400"
+                    className="p-2.5 rounded-xl transition-colors"
+                    style={{ color: 'var(--text-muted)' }}
+                    onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     <X size={18} />
                   </button>
                 </div>
-                {/* Color presets */}
-                <div className="flex items-center gap-2 mt-3 ml-12">
+                {/* Colors */}
+                <div className="flex items-center gap-2 mt-4 ml-14">
                   {PRESET_COLORS.map((color) => (
                     <button
                       key={color}
                       onClick={() => setNewColor(color)}
-                      className={`w-6 h-6 rounded-full transition-transform ${
-                        newColor === color ? "ring-2 ring-white ring-offset-2 ring-offset-[#2a2a2a]" : ""
-                      }`}
-                      style={{ backgroundColor: color }}
+                      className="w-7 h-7 rounded-lg transition-all duration-200"
+                      style={{
+                        backgroundColor: color,
+                        transform: newColor === color ? 'scale(1.1)' : 'scale(1)',
+                        boxShadow: newColor === color ? `0 0 0 2px var(--bg-surface), 0 0 0 4px ${color}` : 'none'
+                      }}
                     />
                   ))}
                   <div className="relative">
@@ -282,16 +336,15 @@ export default function SettingsPage() {
                       value={newColor}
                       onChange={(e) => setNewColor(e.target.value)}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      id="new-color"
                     />
                     <button
-                      className={`w-6 h-6 rounded-full border-2 border-dashed border-gray-500 flex items-center justify-center hover:border-gray-400 transition-colors ${
-                        !PRESET_COLORS.includes(newColor) ? "ring-2 ring-white ring-offset-2 ring-offset-[#2a2a2a]" : ""
-                      }`}
-                      style={{ backgroundColor: !PRESET_COLORS.includes(newColor) ? newColor : "transparent" }}
-                      title="Custom color"
+                      className="w-7 h-7 rounded-lg border-2 border-dashed flex items-center justify-center transition-colors"
+                      style={{
+                        borderColor: !PRESET_COLORS.includes(newColor) ? newColor : 'var(--text-faint)',
+                        backgroundColor: !PRESET_COLORS.includes(newColor) ? newColor : 'transparent'
+                      }}
                     >
-                      <Pipette size={12} className={!PRESET_COLORS.includes(newColor) ? "text-white drop-shadow-md" : "text-gray-500"} />
+                      <Pipette size={12} style={{ color: !PRESET_COLORS.includes(newColor) ? 'white' : 'var(--text-faint)' }} />
                     </button>
                   </div>
                 </div>
@@ -300,30 +353,38 @@ export default function SettingsPage() {
 
             {/* Project list */}
             {projects.length === 0 ? (
-              <div className="text-gray-400 text-center py-8">
-                No projects yet. Add one to get started.
+              <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>
+                <FolderKanban size={40} className="mx-auto mb-3" style={{ color: 'var(--text-faint)' }} />
+                <p>No projects yet. Add one to get started.</p>
               </div>
             ) : (
               projects.map((project, index) => (
                 <div
                   key={project.id}
-                  className={`px-5 py-4 ${
-                    index !== projects.length - 1 ? "border-b border-white/5" : ""
-                  }`}
+                  className="px-5 py-4 transition-colors duration-150"
+                  style={{
+                    borderBottom: index !== projects.length - 1 ? '1px solid var(--border-subtle)' : 'none'
+                  }}
+                  onMouseOver={(e) => { if (editingId !== project.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                  onMouseOut={(e) => { if (editingId !== project.id) e.currentTarget.style.background = 'transparent'; }}
                 >
                   {editingId === project.id ? (
-                    // Edit mode
                     <div>
                       <div className="flex items-center gap-4">
-                        <span
-                          className="w-8 h-8 rounded-full shrink-0 border-2 border-white/20"
-                          style={{ backgroundColor: editColor }}
+                        <div
+                          className="w-10 h-10 rounded-xl shrink-0"
+                          style={{ backgroundColor: editColor, boxShadow: 'var(--shadow-sm)' }}
                         />
                         <input
                           type="text"
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
-                          className="flex-1 bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                          className="flex-1 rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                          style={{
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border-default)',
+                            color: 'var(--text-primary)'
+                          }}
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === "Enter") handleUpdate();
@@ -332,29 +393,32 @@ export default function SettingsPage() {
                         />
                         <button
                           onClick={handleUpdate}
-                          className="p-2 hover:bg-white/10 rounded-lg text-green-500"
+                          className="p-2.5 rounded-xl transition-colors"
+                          style={{ background: 'var(--accent-success-muted)', color: 'var(--accent-success)' }}
                         >
                           <Check size={18} />
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
-                          className="p-2 hover:bg-white/10 rounded-lg text-gray-400"
+                          className="p-2.5 rounded-xl transition-colors"
+                          style={{ color: 'var(--text-muted)' }}
+                          onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                         >
                           <X size={18} />
                         </button>
                       </div>
-                      {/* Color presets */}
-                      <div className="flex items-center gap-2 mt-3 ml-12">
+                      <div className="flex items-center gap-2 mt-4 ml-14">
                         {PRESET_COLORS.map((color) => (
                           <button
                             key={color}
                             onClick={() => setEditColor(color)}
-                            className={`w-6 h-6 rounded-full transition-transform ${
-                              editColor === color
-                                ? "ring-2 ring-white ring-offset-2 ring-offset-[#252525]"
-                                : ""
-                            }`}
-                            style={{ backgroundColor: color }}
+                            className="w-7 h-7 rounded-lg transition-all duration-200"
+                            style={{
+                              backgroundColor: color,
+                              transform: editColor === color ? 'scale(1.1)' : 'scale(1)',
+                              boxShadow: editColor === color ? `0 0 0 2px var(--bg-card), 0 0 0 4px ${color}` : 'none'
+                            }}
                           />
                         ))}
                         <div className="relative">
@@ -363,37 +427,41 @@ export default function SettingsPage() {
                             value={editColor}
                             onChange={(e) => setEditColor(e.target.value)}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            id={`edit-color-${project.id}`}
                           />
                           <button
-                            className={`w-6 h-6 rounded-full border-2 border-dashed border-gray-500 flex items-center justify-center hover:border-gray-400 transition-colors ${
-                              !PRESET_COLORS.includes(editColor) ? "ring-2 ring-white ring-offset-2 ring-offset-[#252525]" : ""
-                            }`}
-                            style={{ backgroundColor: !PRESET_COLORS.includes(editColor) ? editColor : "transparent" }}
-                            title="Custom color"
+                            className="w-7 h-7 rounded-lg border-2 border-dashed flex items-center justify-center transition-colors"
+                            style={{
+                              borderColor: !PRESET_COLORS.includes(editColor) ? editColor : 'var(--text-faint)',
+                              backgroundColor: !PRESET_COLORS.includes(editColor) ? editColor : 'transparent'
+                            }}
                           >
-                            <Pipette size={12} className={!PRESET_COLORS.includes(editColor) ? "text-white drop-shadow-md" : "text-gray-500"} />
+                            <Pipette size={12} style={{ color: !PRESET_COLORS.includes(editColor) ? 'white' : 'var(--text-faint)' }} />
                           </button>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    // View mode
                     <div className="flex items-center gap-4 group">
-                      <span
-                        className="w-4 h-4 rounded-full shrink-0"
+                      <div
+                        className="w-4 h-4 rounded-md shrink-0"
                         style={{ backgroundColor: project.color }}
                       />
                       <span className="flex-1 font-medium">{project.name}</span>
                       <button
                         onClick={() => startEditing(project)}
-                        className="p-2 hover:bg-white/10 rounded-lg text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                        style={{ color: 'var(--text-muted)' }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-active)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <Pencil size={16} />
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(project)}
-                        className="p-2 hover:bg-white/10 rounded-lg text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                        style={{ color: 'var(--accent-danger)' }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'var(--accent-danger-muted)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -408,13 +476,15 @@ export default function SettingsPage() {
 
       {/* General Tab */}
       {activeTab === "general" && settings && (
-        <div className="space-y-6">
-          <div className="bg-[#252525] rounded-xl overflow-hidden">
-            {/* Show timer window on startup */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+        <div className="space-y-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+          >
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
               <div>
-                <div className="font-medium">Show timer window on startup</div>
-                <div className="text-sm text-gray-400 mt-0.5">
+                <div className="font-medium mb-1">Show timer window on startup</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Automatically show the floating timer when the app launches
                 </div>
               </div>
@@ -424,11 +494,10 @@ export default function SettingsPage() {
               />
             </div>
 
-            {/* Show timer in system tray */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
               <div>
-                <div className="font-medium">Show timer in system tray</div>
-                <div className="text-sm text-gray-400 mt-0.5">
+                <div className="font-medium mb-1">Show timer in system tray</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Display the running timer duration next to the tray icon
                 </div>
               </div>
@@ -438,12 +507,11 @@ export default function SettingsPage() {
               />
             </div>
 
-            {/* Stop timer when idle */}
-            <div className="flex items-center justify-between px-5 py-4">
+            <div className="flex items-center justify-between px-6 py-5">
               <div>
-                <div className="font-medium">Stop timer when idle</div>
-                <div className="text-sm text-gray-400 mt-0.5">
-                  Automatically stop the timer after {settings.idle_timeout_minutes} minutes of inactivity
+                <div className="font-medium mb-1">Stop timer when idle</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  Automatically stop after {settings.idle_timeout_minutes} minutes of inactivity
                 </div>
               </div>
               <Toggle
@@ -457,13 +525,15 @@ export default function SettingsPage() {
 
       {/* Reminders Tab */}
       {activeTab === "reminders" && settings && (
-        <div className="space-y-6">
-          <div className="bg-[#252525] rounded-xl overflow-hidden">
-            {/* Enable reminders */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+        <div className="space-y-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+          >
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
               <div>
-                <div className="font-medium">Enable tracking reminders</div>
-                <div className="text-sm text-gray-400 mt-0.5">
+                <div className="font-medium mb-1">Enable tracking reminders</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Get notified when you're not tracking time during work hours
                 </div>
               </div>
@@ -473,12 +543,11 @@ export default function SettingsPage() {
               />
             </div>
 
-            {/* Reminder interval */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
               <div>
-                <div className="font-medium">Reminder interval</div>
-                <div className="text-sm text-gray-400 mt-0.5">
-                  How often to remind (in minutes)
+                <div className="font-medium mb-1">Reminder interval</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  How often to remind you
                 </div>
               </div>
               <select
@@ -489,9 +558,14 @@ export default function SettingsPage() {
                   setSettings({ ...settings, reminder_interval_minutes: value });
                 }}
                 disabled={!settings.reminder_enabled}
-                className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
-                  !settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""
-                }`}
+                className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-default)',
+                  color: 'var(--text-primary)',
+                  opacity: !settings.reminder_enabled ? 0.5 : 1,
+                  cursor: !settings.reminder_enabled ? 'not-allowed' : 'pointer'
+                }}
               >
                 <option value={5}>5 min</option>
                 <option value={10}>10 min</option>
@@ -505,12 +579,11 @@ export default function SettingsPage() {
               </select>
             </div>
 
-            {/* Active hours */}
-            <div className="px-5 py-4 border-b border-white/5">
-              <div className="flex items-center justify-between mb-3">
+            <div className="px-6 py-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <div className="font-medium">Active hours</div>
-                  <div className="text-sm text-gray-400 mt-0.5">
+                  <div className="font-medium mb-1">Active hours</div>
+                  <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     Only remind during these hours
                   </div>
                 </div>
@@ -524,11 +597,16 @@ export default function SettingsPage() {
                     setSettings({ ...settings, reminder_start_time: e.target.value });
                   }}
                   disabled={!settings.reminder_enabled}
-                  className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
-                    !settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
+                  className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)',
+                    opacity: !settings.reminder_enabled ? 0.5 : 1,
+                    cursor: !settings.reminder_enabled ? 'not-allowed' : 'pointer'
+                  }}
                 />
-                <span className="text-gray-400">to</span>
+                <span style={{ color: 'var(--text-muted)' }}>to</span>
                 <input
                   type="time"
                   value={settings.reminder_end_time}
@@ -537,18 +615,22 @@ export default function SettingsPage() {
                     setSettings({ ...settings, reminder_end_time: e.target.value });
                   }}
                   disabled={!settings.reminder_enabled}
-                  className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
-                    !settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
+                  className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)',
+                    opacity: !settings.reminder_enabled ? 0.5 : 1,
+                    cursor: !settings.reminder_enabled ? 'not-allowed' : 'pointer'
+                  }}
                 />
               </div>
             </div>
 
-            {/* Active days */}
-            <div className="px-5 py-4">
-              <div className="mb-3">
-                <div className="font-medium">Active days</div>
-                <div className="text-sm text-gray-400 mt-0.5">
+            <div className="px-6 py-5">
+              <div className="mb-4">
+                <div className="font-medium mb-1">Active days</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Only remind on these days
                 </div>
               </div>
@@ -558,11 +640,13 @@ export default function SettingsPage() {
                     key={day.value}
                     onClick={() => handleWeekdayToggle(day.value)}
                     disabled={!settings.reminder_enabled}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      settings.reminder_weekdays.includes(day.value)
-                        ? "bg-blue-600 text-white"
-                        : "bg-[#1a1a1a] text-gray-400 hover:bg-[#303030]"
-                    } ${!settings.reminder_enabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                    className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                    style={{
+                      background: settings.reminder_weekdays.includes(day.value) ? 'var(--accent-primary)' : 'var(--bg-surface)',
+                      color: settings.reminder_weekdays.includes(day.value) ? 'var(--bg-base)' : 'var(--text-muted)',
+                      opacity: !settings.reminder_enabled ? 0.5 : 1,
+                      cursor: !settings.reminder_enabled ? 'not-allowed' : 'pointer'
+                    }}
                   >
                     {day.label}
                   </button>
@@ -572,16 +656,23 @@ export default function SettingsPage() {
           </div>
 
           {/* Visual Alerts */}
-          <div className="bg-[#252525] rounded-xl overflow-hidden">
-            <div className="px-5 py-3 border-b border-white/5">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Visual Alerts</h3>
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}
+          >
+            <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+              <h3
+                className="text-xs font-medium uppercase tracking-wider"
+                style={{ color: 'var(--text-faint)' }}
+              >
+                Visual Alerts
+              </h3>
             </div>
 
-            {/* Enable blink */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
               <div>
-                <div className="font-medium">Blink timer window</div>
-                <div className="text-sm text-gray-400 mt-0.5">
+                <div className="font-medium mb-1">Blink timer window</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
                   Flash the timer window when not tracking during active hours
                 </div>
               </div>
@@ -591,12 +682,11 @@ export default function SettingsPage() {
               />
             </div>
 
-            {/* Blink interval */}
-            <div className="flex items-center justify-between px-5 py-4">
+            <div className="flex items-center justify-between px-6 py-5">
               <div>
-                <div className="font-medium">Blink interval</div>
-                <div className="text-sm text-gray-400 mt-0.5">
-                  How often to blink (in seconds)
+                <div className="font-medium mb-1">Blink interval</div>
+                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  How often to blink
                 </div>
               </div>
               <select
@@ -607,9 +697,14 @@ export default function SettingsPage() {
                   setSettings({ ...settings, blink_interval_seconds: value });
                 }}
                 disabled={!settings.blink_enabled}
-                className={`bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 ${
-                  !settings.blink_enabled ? "opacity-50 cursor-not-allowed" : ""
-                }`}
+                className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-default)',
+                  color: 'var(--text-primary)',
+                  opacity: !settings.blink_enabled ? 0.5 : 1,
+                  cursor: !settings.blink_enabled ? 'not-allowed' : 'pointer'
+                }}
               >
                 <option value={15}>15 sec</option>
                 <option value={30}>30 sec</option>
@@ -623,34 +718,69 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Delete modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#252525] rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                <AlertTriangle size={20} className="text-red-500" />
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+        >
+          <div
+            className="rounded-2xl p-6 max-w-sm w-full mx-4 animate-scale-in"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-default)',
+              boxShadow: 'var(--shadow-lg)'
+            }}
+          >
+            <div className="flex items-center gap-4 mb-5">
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center"
+                style={{ background: 'var(--accent-danger-muted)' }}
+              >
+                <AlertTriangle size={22} style={{ color: 'var(--accent-danger)' }} />
               </div>
-              <h3 className="text-lg font-semibold">Delete Project</h3>
+              <div>
+                <h3 className="text-lg font-semibold">Delete Project</h3>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                  This action cannot be undone
+                </p>
+              </div>
             </div>
-            <p className="text-gray-300 mb-2">
-              Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
-            </p>
-            <p className="text-gray-400 text-sm mb-6">
-              All time entries for this project will also be permanently deleted.
-            </p>
+
+            <div
+              className="p-4 rounded-xl mb-6"
+              style={{ background: 'var(--bg-surface)' }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div
+                  className="w-3 h-3 rounded-sm"
+                  style={{ backgroundColor: deleteConfirm.color }}
+                />
+                <span className="font-medium">{deleteConfirm.name}</span>
+              </div>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                All time entries for this project will also be permanently deleted.
+              </p>
+            </div>
+
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#303030] text-gray-300 transition-colors"
+                className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'var(--bg-surface)'}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+                className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+                style={{ background: 'var(--accent-danger)' }}
+                onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
               >
-                Delete
+                Delete Project
               </button>
             </div>
           </div>
