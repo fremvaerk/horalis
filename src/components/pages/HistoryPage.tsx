@@ -479,7 +479,7 @@ export default function HistoryPage() {
 
               {/* Entries */}
               <div
-                className="rounded-xl overflow-hidden"
+                className="rounded-xl"
                 style={{
                   background: 'var(--bg-card)',
                   border: '1px solid var(--border-subtle)'
