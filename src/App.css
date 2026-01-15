@@ -332,17 +332,20 @@ html, body {
   overflow: visible;
 }
 
+/* Hide scrollbars in timer window context - cross-platform */
+html:has(.timer-window),
 body:has(.timer-window),
-html:has(.timer-window) {
+html.timer-mode,
+body.timer-mode {
   background: transparent !important;
-  overflow: visible;
   scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+  -ms-overflow-style: none; /* IE/Edge/Windows */
 }
 
-/* Hide scrollbars in timer window (Chrome/Safari) */
+html:has(.timer-window)::-webkit-scrollbar,
 body:has(.timer-window)::-webkit-scrollbar,
-html:has(.timer-window)::-webkit-scrollbar {
+html.timer-mode::-webkit-scrollbar,
+body.timer-mode::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;

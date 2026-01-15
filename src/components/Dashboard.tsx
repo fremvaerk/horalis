@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Clock, BarChart3, Settings, History, Timer } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
 import HistoryPage from "./pages/HistoryPage";
 import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -14,6 +15,11 @@ const navItems: { id: Page; label: string; icon: typeof Clock }[] = [
 
 export default function Dashboard() {
   const [activePage, setActivePage] = useState<Page>("history");
+  const [appVersion, setAppVersion] = useState<string>("0.1.0");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(console.error);
+  }, []);
 
   return (
     <div className="dashboard-root flex h-screen text-white" style={{ background: 'var(--bg-base)' }}>
@@ -132,9 +138,7 @@ export default function Dashboard() {
               color: 'var(--text-muted)'
             }}
           >
-            <span style={{ fontFamily: 'var(--font-mono)' }}>v0.1.0</span>
-            <span className="mx-2">·</span>
-            <span>Beta</span>
+            <span style={{ fontFamily: 'var(--font-mono)' }}>v{appVersion}</span>
           </div>
         </div>
       </aside>
