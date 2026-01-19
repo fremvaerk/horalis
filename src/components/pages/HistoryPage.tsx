@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { MoreVertical, Trash2, Pencil, AlertTriangle, X, Square, Clock, Calendar } from "lucide-react";
-import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, getRunningEntry, stopTimeEntry, TimeEntry, Project } from "../../lib/db";
+import { MoreVertical, Trash2, Pencil, AlertTriangle, X, Square, Clock, Calendar, Plus } from "lucide-react";
+import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, createTimeEntry, getRunningEntry, stopTimeEntry, TimeEntry, Project } from "../../lib/db";
 import { invoke } from "@tauri-apps/api/core";
 
 interface EntryWithProject extends TimeEntry {
@@ -216,6 +216,10 @@ export default function HistoryPage() {
   const [editEndTime, setEditEndTime] = useState("");
   const [runningEntry, setRunningEntry] = useState<EntryWithProject | null>(null);
   const [runningElapsed, setRunningElapsed] = useState(0);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addProjectId, setAddProjectId] = useState<number>(0);
+  const [addStartTime, setAddStartTime] = useState("");
+  const [addEndTime, setAddEndTime] = useState("");
 
   useEffect(() => {
     loadData();
@@ -307,6 +311,39 @@ export default function HistoryPage() {
     }
   }
 
+  function openAddModal() {
+    // Set default values
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    // Format for datetime-local input
+    const formatForInput = (date: Date) => {
+      const offset = date.getTimezoneOffset();
+      const local = new Date(date.getTime() - offset * 60000);
+      return local.toISOString().slice(0, 16);
+    };
+
+    setAddProjectId(projects[0]?.id || 0);
+    setAddStartTime(formatForInput(oneHourAgo));
+    setAddEndTime(formatForInput(now));
+    setShowAddModal(true);
+  }
+
+  async function handleAdd() {
+    if (!addProjectId || !addStartTime || !addEndTime) return;
+    try {
+      await createTimeEntry(
+        addProjectId,
+        fromLocalDateTimeInput(addStartTime),
+        fromLocalDateTimeInput(addEndTime)
+      );
+      setShowAddModal(false);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to create entry:", error);
+    }
+  }
+
   const dayGroups = groupEntriesByDay(entries);
 
   if (isLoading) {
@@ -330,21 +367,36 @@ export default function HistoryPage() {
     <div className="p-8">
       {/* Header */}
       <header className="mb-8 animate-fade-in-up">
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{
+                background: 'var(--accent-primary-muted)',
+              }}
+            >
+              <Clock size={18} style={{ color: 'var(--accent-primary)' }} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">History</h1>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                Your tracked time entries
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
             style={{
-              background: 'var(--accent-primary-muted)',
+              background: 'var(--accent-primary)',
+              color: 'var(--bg-base)',
             }}
+            onMouseOver={(e) => e.currentTarget.style.boxShadow = 'var(--shadow-glow)'}
+            onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
           >
-            <Clock size={18} style={{ color: 'var(--accent-primary)' }} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">History</h1>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              Your tracked time entries
-            </p>
-          </div>
+            <Plus size={16} />
+            Add Entry
+          </button>
         </div>
       </header>
 
@@ -783,6 +835,135 @@ export default function HistoryPage() {
                 onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
               >
                 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add entry modal */}
+      {showAddModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+        >
+          <div
+            className="rounded-2xl p-6 max-w-md w-full mx-4 animate-scale-in"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-default)',
+              boxShadow: 'var(--shadow-lg)'
+            }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold">Add Time Entry</h3>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="p-2 rounded-lg transition-colors"
+                style={{ color: 'var(--text-muted)' }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Project
+                </label>
+                <select
+                  value={addProjectId}
+                  onChange={(e) => setAddProjectId(Number(e.target.value))}
+                  className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)'
+                  }}
+                >
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Start Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={addStartTime}
+                  onChange={(e) => setAddStartTime(e.target.value)}
+                  className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  End Time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={addEndTime}
+                  onChange={(e) => setAddEndTime(e.target.value)}
+                  className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-default)',
+                    color: 'var(--text-primary)'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'var(--bg-surface)'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAdd}
+                disabled={!addProjectId || !addStartTime || !addEndTime}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: 'var(--accent-primary)',
+                  color: 'var(--bg-base)'
+                }}
+                onMouseOver={(e) => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.boxShadow = 'var(--shadow-glow)';
+                  }
+                }}
+                onMouseOut={(e) => e.currentTarget.style.boxShadow = 'none'}
+              >
+                Add Entry
               </button>
             </div>
           </div>

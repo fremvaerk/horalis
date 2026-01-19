@@ -197,6 +197,20 @@ export async function deleteTimeEntry(id: number): Promise<void> {
   await db.execute("DELETE FROM time_entries WHERE id = ?", [id]);
 }
 
+export async function createTimeEntry(
+  projectId: number,
+  startTime: string,
+  endTime: string
+): Promise<number> {
+  const db = await getDb();
+  const result = await db.execute(
+    `INSERT INTO time_entries (project_id, start_time, end_time, duration)
+     VALUES (?, ?, ?, CAST((julianday(?) - julianday(?)) * 86400 AS INTEGER))`,
+    [projectId, startTime, endTime, endTime, startTime]
+  );
+  return result.lastInsertId ?? 0;
+}
+
 export async function updateTimeEntry(
   id: number,
   projectId: number,
