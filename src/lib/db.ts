@@ -134,8 +134,19 @@ export async function stopTimeEntry(entryId: number): Promise<void> {
     `UPDATE time_entries
      SET end_time = datetime('now'),
          duration = CAST((julianday(datetime('now')) - julianday(start_time)) * 86400 AS INTEGER)
-     WHERE id = ?`,
+     WHERE id = ? AND end_time IS NULL`,
     [entryId]
+  );
+}
+
+export async function stopTimeEntryAtTime(entryId: number, endTimeUtc: string): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE time_entries
+     SET end_time = ?,
+         duration = CAST((julianday(?) - julianday(start_time)) * 86400 AS INTEGER)
+     WHERE id = ? AND end_time IS NULL`,
+    [endTimeUtc, endTimeUtc, entryId]
   );
 }
 
@@ -171,17 +182,27 @@ export async function getTodayTotal(): Promise<number> {
      FROM time_entries
      WHERE date(start_time, 'localtime') = date('now', 'localtime') AND end_time IS NOT NULL`
   );
-  return result[0]?.total || 0;
+  return result[0]?.total ?? 0;
 }
 
 export async function getWeekTotal(): Promise<number> {
   const db = await getDb();
+  // Calculate Monday of the current week
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  monday.setHours(0, 0, 0, 0);
+  const mondayStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+
   const result = await db.select<{ total: number | null }[]>(
     `SELECT SUM(duration) as total
      FROM time_entries
-     WHERE date(start_time, 'localtime') >= date('now', 'localtime', '-7 days') AND end_time IS NOT NULL`
+     WHERE date(start_time, 'localtime') >= ? AND end_time IS NOT NULL`,
+    [mondayStr]
   );
-  return result[0]?.total || 0;
+  return result[0]?.total ?? 0;
 }
 
 export async function getLastUsedProjectId(): Promise<number | null> {
@@ -189,7 +210,7 @@ export async function getLastUsedProjectId(): Promise<number | null> {
   const result = await db.select<{ project_id: number }[]>(
     `SELECT project_id FROM time_entries ORDER BY start_time DESC LIMIT 1`
   );
-  return result[0]?.project_id || null;
+  return result[0]?.project_id ?? null;
 }
 
 export async function deleteTimeEntry(id: number): Promise<void> {

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MoreVertical, Trash2, Pencil, AlertTriangle, X, Square, Clock, Calendar, Plus } from "lucide-react";
 import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, createTimeEntry, getRunningEntry, stopTimeEntry, TimeEntry, Project } from "../../lib/db";
 import { invoke } from "@tauri-apps/api/core";
+import { emit, listen } from "@tauri-apps/api/event";
 
 interface EntryWithProject extends TimeEntry {
   project_name: string;
@@ -220,9 +221,34 @@ export default function HistoryPage() {
   const [addProjectId, setAddProjectId] = useState<number>(0);
   const [addStartTime, setAddStartTime] = useState("");
   const [addEndTime, setAddEndTime] = useState("");
+  const [editError, setEditError] = useState("");
+  const [addError, setAddError] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (menuOpen === null) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
+
+  // Listen for timer state changes from other windows to refresh data
+  useEffect(() => {
+    const unlisten = listen("timer-state-changed", () => {
+      loadData();
+    });
+    return () => {
+      unlisten.then(fn => fn());
+    };
   }, []);
 
   useEffect(() => {
@@ -271,6 +297,8 @@ export default function HistoryPage() {
       setRunningEntry(null);
       setRunningElapsed(0);
       await loadData();
+      // Notify other windows (FloatingTimer) that timer state changed
+      await emit("stop-timer");
     } catch (error) {
       console.error("Failed to stop timer:", error);
     }
@@ -292,11 +320,17 @@ export default function HistoryPage() {
     setEditProjectId(entry.project_id);
     setEditStartTime(toLocalDateTimeInput(entry.start_time));
     setEditEndTime(entry.end_time ? toLocalDateTimeInput(entry.end_time) : "");
+    setEditError("");
     setMenuOpen(null);
   }
 
   async function handleEdit() {
     if (!editEntry || !editStartTime || !editEndTime) return;
+    if (new Date(editEndTime) <= new Date(editStartTime)) {
+      setEditError("End time must be after start time");
+      return;
+    }
+    setEditError("");
     try {
       await updateTimeEntry(
         editEntry.id,
@@ -326,11 +360,17 @@ export default function HistoryPage() {
     setAddProjectId(projects[0]?.id || 0);
     setAddStartTime(formatForInput(oneHourAgo));
     setAddEndTime(formatForInput(now));
+    setAddError("");
     setShowAddModal(true);
   }
 
   async function handleAdd() {
     if (!addProjectId || !addStartTime || !addEndTime) return;
+    if (new Date(addEndTime) <= new Date(addStartTime)) {
+      setAddError("End time must be after start time");
+      return;
+    }
+    setAddError("");
     try {
       await createTimeEntry(
         addProjectId,
@@ -576,7 +616,7 @@ export default function HistoryPage() {
                     </div>
 
                     {/* Menu */}
-                    <div className="relative">
+                    <div className="relative" ref={menuOpen === entry.id ? menuRef : undefined}>
                       <button
                         onClick={() => setMenuOpen(menuOpen === entry.id ? null : entry.id)}
                         className="p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-150"
@@ -806,6 +846,10 @@ export default function HistoryPage() {
               </div>
             </div>
 
+            {editError && (
+              <p className="text-sm mt-2" style={{ color: 'var(--accent-danger)' }}>{editError}</p>
+            )}
+
             <div className="flex gap-3 justify-end mt-6">
               <button
                 onClick={() => setEditEntry(null)}
@@ -934,6 +978,10 @@ export default function HistoryPage() {
                 />
               </div>
             </div>
+
+            {addError && (
+              <p className="text-sm mt-2" style={{ color: 'var(--accent-danger)' }}>{addError}</p>
+            )}
 
             <div className="flex gap-3 justify-end mt-6">
               <button

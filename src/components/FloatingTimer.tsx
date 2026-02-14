@@ -16,7 +16,16 @@ function isWithinTimeWindow(startTime: string, endTime: string): boolean {
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const [startH, startM] = startTime.split(':').map(Number);
   const [endH, endM] = endTime.split(':').map(Number);
-  return currentMinutes >= startH * 60 + startM && currentMinutes <= endH * 60 + endM;
+  const startMinutes = startH * 60 + startM;
+  const endMinutes = endH * 60 + endM;
+
+  if (startMinutes <= endMinutes) {
+    // Normal window (e.g., 09:00 - 18:00)
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  } else {
+    // Overnight window (e.g., 22:00 - 06:00)
+    return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+  }
 }
 
 function isAllowedWeekday(weekdays: number[]): boolean {
@@ -39,6 +48,7 @@ export default function FloatingTimer() {
     selectProject,
     startTimer,
     stopTimer,
+    stopTimerAdjusted,
     startTimerForProject,
     tick,
   } = useTimerStore();
@@ -50,9 +60,7 @@ export default function FloatingTimer() {
 
   // Blink effect when timer not running during active hours
   useEffect(() => {
-    console.log('[Blink] Settings:', settings, 'isRunning:', isRunning);
     if (!settings?.blink_enabled || isRunning) {
-      console.log('[Blink] Skipping - blink_enabled:', settings?.blink_enabled, 'isRunning:', isRunning);
       setIsBlinking(false);
       return;
     }
@@ -60,9 +68,7 @@ export default function FloatingTimer() {
     const checkAndBlink = () => {
       const inWindow = isWithinTimeWindow(settings.reminder_start_time, settings.reminder_end_time);
       const allowedDay = isAllowedWeekday(settings.reminder_weekdays);
-      console.log('[Blink] Checking:', { inWindow, allowedDay, interval: settings.blink_interval_seconds });
       if (inWindow && allowedDay) {
-        console.log('[Blink] Triggering blink!');
         setIsBlinking(true);
         setTimeout(() => setIsBlinking(false), 1000);
       }
@@ -118,7 +124,7 @@ export default function FloatingTimer() {
     };
   }, [startTimerForProject]);
 
-  // Listen for tray menu stop timer
+  // Listen for tray menu stop timer or external stop requests
   useEffect(() => {
     const unlisten = listen("stop-timer", () => {
       stopTimer();
@@ -128,27 +134,35 @@ export default function FloatingTimer() {
     };
   }, [stopTimer]);
 
-  // Listen for idle timeout from Rust backend
+  // Listen for idle timeout from Rust backend - adjust end time to exclude idle period
   useEffect(() => {
     const unlisten = listen<number>("idle-timeout", (event) => {
-      console.log(`Idle timeout reached: ${event.payload} seconds`);
-      stopTimer();
+      stopTimerAdjusted(event.payload);
     });
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [stopTimer]);
+  }, [stopTimerAdjusted]);
 
-  // Listen for system sleep detection from Rust backend
+  // Listen for system sleep detection from Rust backend - adjust end time to exclude sleep
   useEffect(() => {
     const unlisten = listen<number>("system-sleep", (event) => {
-      console.log(`System sleep detected: ${event.payload} seconds`);
-      stopTimer();
+      stopTimerAdjusted(event.payload);
     });
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [stopTimer]);
+  }, [stopTimerAdjusted]);
+
+  // Listen for settings changes from the dashboard window
+  useEffect(() => {
+    const unlisten = listen("settings-changed", () => {
+      loadSettings();
+    });
+    return () => {
+      unlisten.then(fn => fn());
+    };
+  }, [loadSettings]);
 
   useEffect(() => {
     const interval = setInterval(() => {

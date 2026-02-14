@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Plus, Pencil, Trash2, X, Check, AlertTriangle, FolderKanban, Settings2, Bell, Pipette } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { getProjects, createProject, updateProject, deleteProject, Project, getSettings, updateSetting, AppSettings } from "../../lib/db";
+import { emit } from "@tauri-apps/api/event";
+import { getProjects, createProject, updateProject, deleteProject, getRunningEntry, stopTimeEntry, Project, getSettings, updateSetting, AppSettings } from "../../lib/db";
 
 const WEEKDAYS = [
   { value: 1, label: "Mon" },
@@ -116,9 +117,27 @@ export default function SettingsPage() {
   async function handleDelete() {
     if (!deleteConfirm) return;
     try {
+      // Check if there's a running timer for this project and stop it first
+      const running = await getRunningEntry();
+      if (running && running.project_id === deleteConfirm.id) {
+        await stopTimeEntry(running.id);
+        await invoke("stop_tray_timer");
+        await invoke("reset_tray_icon");
+        // Notify FloatingTimer to sync its state
+        await emit("stop-timer");
+      }
+
       await deleteProject(deleteConfirm.id);
       setDeleteConfirm(null);
       await loadData();
+
+      // Update tray menu after project deletion
+      const updatedProjects = await getProjects();
+      const isRunning = !!(await getRunningEntry());
+      await invoke("update_tray_menu", {
+        projects: updatedProjects.map(p => ({ id: p.id, name: p.name, color: p.color })),
+        isRunning,
+      });
     } catch (error) {
       console.error("Failed to delete project:", error);
     }
@@ -134,6 +153,9 @@ export default function SettingsPage() {
       if (key.startsWith("reminder_")) {
         await updateReminderSystem(newSettings);
       }
+
+      // Notify other windows (FloatingTimer) about settings changes
+      await emit("settings-changed");
     } catch (error) {
       console.error("Failed to update setting:", error);
     }
@@ -175,6 +197,7 @@ export default function SettingsPage() {
       const newSettings = { ...settings, reminder_weekdays: newDays };
       setSettings(newSettings);
       await updateReminderSystem(newSettings);
+      await emit("settings-changed");
     } catch (error) {
       console.error("Failed to update weekdays:", error);
     }
@@ -553,9 +576,7 @@ export default function SettingsPage() {
               <select
                 value={settings.reminder_interval_minutes}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value, 10);
-                  handleSettingChange("reminder_interval_minutes", value);
-                  setSettings({ ...settings, reminder_interval_minutes: value });
+                  handleSettingChange("reminder_interval_minutes", parseInt(e.target.value, 10));
                 }}
                 disabled={!settings.reminder_enabled}
                 className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"
@@ -594,7 +615,6 @@ export default function SettingsPage() {
                   value={settings.reminder_start_time}
                   onChange={(e) => {
                     handleSettingChange("reminder_start_time", e.target.value);
-                    setSettings({ ...settings, reminder_start_time: e.target.value });
                   }}
                   disabled={!settings.reminder_enabled}
                   className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"
@@ -612,7 +632,6 @@ export default function SettingsPage() {
                   value={settings.reminder_end_time}
                   onChange={(e) => {
                     handleSettingChange("reminder_end_time", e.target.value);
-                    setSettings({ ...settings, reminder_end_time: e.target.value });
                   }}
                   disabled={!settings.reminder_enabled}
                   className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"
@@ -692,9 +711,7 @@ export default function SettingsPage() {
               <select
                 value={settings.blink_interval_seconds}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value, 10);
-                  handleSettingChange("blink_interval_seconds", value);
-                  setSettings({ ...settings, blink_interval_seconds: value });
+                  handleSettingChange("blink_interval_seconds", parseInt(e.target.value, 10));
                 }}
                 disabled={!settings.blink_enabled}
                 className="rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-colors"

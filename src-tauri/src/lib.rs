@@ -292,7 +292,7 @@ fn parse_time_string(time_str: &str) -> Option<(u32, u32)> {
     Some((hour, minute))
 }
 
-/// Check if current time is within the reminder time window
+/// Check if current time is within the reminder time window (supports overnight windows)
 fn is_within_time_window(start_time: &str, end_time: &str) -> bool {
     let now = Local::now();
     let current_minutes = now.hour() * 60 + now.minute();
@@ -307,7 +307,13 @@ fn is_within_time_window(start_time: &str, end_time: &str) -> bool {
     let start_minutes = start_h * 60 + start_m;
     let end_minutes = end_h * 60 + end_m;
 
-    current_minutes >= start_minutes && current_minutes <= end_minutes
+    if start_minutes <= end_minutes {
+        // Normal window (e.g., 09:00 - 18:00)
+        current_minutes >= start_minutes && current_minutes <= end_minutes
+    } else {
+        // Overnight window (e.g., 22:00 - 06:00)
+        current_minutes >= start_minutes || current_minutes <= end_minutes
+    }
 }
 
 /// Check if current day is in the allowed weekdays (0=Sun, 1=Mon, ..., 6=Sat)
@@ -337,6 +343,7 @@ async fn start_tray_timer(
     start_time_ms: u64,
     idle_enabled: Option<bool>,
     idle_timeout_minutes: Option<u64>,
+    show_tray_title: Option<bool>,
 ) -> Result<(), String> {
     let timer_state = app.state::<NativeTimerState>();
     let tray_state = app.state::<TrayState>();
@@ -356,16 +363,19 @@ async fn start_tray_timer(
     let (stop_tx, mut stop_rx) = watch::channel(false);
     *timer_state.stop_tx.lock().unwrap() = Some(stop_tx);
 
-    // Set initial tray title
+    // Set initial tray title if enabled
+    let show_title = show_tray_title.unwrap_or(true);
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     let elapsed_secs = (now_ms.saturating_sub(start_time_ms)) / 1000;
-    let initial_title = format_tray_time(elapsed_secs);
 
-    if let Some(tray) = tray_state.tray.lock().unwrap().as_ref() {
-        set_tray_title_platform(tray, Some(&initial_title));
+    if show_title {
+        let initial_title = format_tray_time(elapsed_secs);
+        if let Some(tray) = tray_state.tray.lock().unwrap().as_ref() {
+            set_tray_title_platform(tray, Some(&initial_title));
+        }
     }
 
     // Clone what we need for the background task
@@ -450,8 +460,8 @@ async fn start_tray_timer(
             let elapsed_secs = (now_ms.saturating_sub(start_ms)) / 1000;
             let current_minutes = elapsed_secs / 60;
 
-            // Only update tray when minutes change
-            if current_minutes != last_minutes {
+            // Only update tray when minutes change and title display is enabled
+            if show_title && current_minutes != last_minutes {
                 last_minutes = current_minutes;
                 let title = format_tray_time(elapsed_secs);
 
@@ -469,12 +479,10 @@ async fn start_tray_timer(
 
 #[tauri::command]
 fn stop_tray_timer(app: tauri::AppHandle) {
-    println!("[Timer] stop_tray_timer called");
     let timer_state = app.state::<NativeTimerState>();
 
     // Clear start time
     *timer_state.start_time_ms.lock().unwrap() = None;
-    println!("[Timer] start_time_ms cleared");
 
     // Signal stop to background task
     {
@@ -582,12 +590,9 @@ async fn start_reminder(
 
     // If reminders are disabled, just return
     if !config.enabled {
-        println!("[Reminder] Reminders are disabled");
         return Ok(());
     }
 
-    println!("[Reminder] Starting reminder system: interval={}min, window={}-{}, weekdays={:?}",
-             config.interval_minutes, config.start_time, config.end_time, config.weekdays);
 
     // Create channel for stopping
     let (stop_tx, mut stop_rx) = watch::channel(false);
@@ -617,20 +622,16 @@ async fn start_reminder(
             // Check if timer is running - skip reminder if so
             let timer_state = app_handle.state::<NativeTimerState>();
             if timer_state.start_time_ms.lock().unwrap().is_some() {
-                // Timer is running, skip this check
-                println!("[Reminder] Skipping: timer is running");
                 continue;
             }
 
             // Check if current day is allowed
             if !is_allowed_weekday(&config.weekdays) {
-                println!("[Reminder] Skipping: current day not in allowed weekdays {:?}", config.weekdays);
                 continue;
             }
 
             // Check if current time is within window
             if !is_within_time_window(&config.start_time, &config.end_time) {
-                println!("[Reminder] Skipping: current time not in window {} - {}", config.start_time, config.end_time);
                 continue;
             }
 
@@ -651,22 +652,12 @@ async fn start_reminder(
             }
 
             // All conditions met - send notification
-            println!("[Reminder] All conditions met! Sending notification...");
-
-            // Try Tauri notification first
-            let tauri_result = app_handle
+            let _ = app_handle
                 .notification()
                 .builder()
                 .title("Horalis Reminder")
                 .body("Don't forget to track your time!")
                 .show();
-
-            match tauri_result {
-                Ok(_) => println!("[Reminder] Tauri notification sent"),
-                Err(e) => {
-                    eprintln!("[Reminder] Tauri notification failed: {}, trying osascript...", e);
-                }
-            }
 
             // Also try osascript on macOS (works in dev mode)
             #[cfg(target_os = "macos")]
@@ -677,7 +668,6 @@ async fn start_reminder(
                         r#"display notification "Don't forget to track your time!" with title "Horalis Reminder""#,
                     ])
                     .output();
-                println!("[Reminder] osascript notification sent");
             }
 
             // Update last notification time
