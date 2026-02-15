@@ -10,6 +10,13 @@ import {
   Legend,
 } from "recharts";
 import { ChevronLeft, ChevronRight, BarChart3, TrendingUp } from "lucide-react";
+import {
+  formatDurationShort,
+  formatHours,
+  getWeekRange,
+  getMonthRange,
+  toLocalDateString,
+} from "../../lib/format";
 
 interface ProjectInfo {
   id: number;
@@ -31,51 +38,6 @@ interface DailyChartData {
 }
 
 type ViewMode = "week" | "month";
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) {
-    return `${h}h ${m}m`;
-  }
-  return `${m}m`;
-}
-
-function formatHours(seconds: number): string {
-  const hours = seconds / 3600;
-  return hours.toFixed(1) + "h";
-}
-
-function getWeekRange(date: Date): { start: Date; end: Date; label: string } {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const start = new Date(d.setDate(diff));
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-
-  const startStr = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const endStr = end.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const label = `${startStr} - ${endStr}, ${start.getFullYear()}`;
-
-  return { start, end, label };
-}
-
-function getMonthRange(date: Date): { start: Date; end: Date; label: string } {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-  const label = start.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  return { start, end, label };
-}
-
-function toLocalDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 export default function ReportsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("week");
@@ -488,7 +450,7 @@ export default function ReportsPage() {
                     className="font-medium w-24 text-right tabular-nums"
                     style={{ fontFamily: 'var(--font-mono)' }}
                   >
-                    {formatDuration(proj.total_duration)}
+                    {formatDurationShort(proj.total_duration)}
                   </span>
                 </div>
                 <div

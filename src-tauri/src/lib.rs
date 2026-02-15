@@ -292,11 +292,8 @@ fn parse_time_string(time_str: &str) -> Option<(u32, u32)> {
     Some((hour, minute))
 }
 
-/// Check if current time is within the reminder time window (supports overnight windows)
-fn is_within_time_window(start_time: &str, end_time: &str) -> bool {
-    let now = Local::now();
-    let current_minutes = now.hour() * 60 + now.minute();
-
+/// Check if a given time (in minutes since midnight) is within a time window (supports overnight windows)
+fn is_within_time_window_at(start_time: &str, end_time: &str, current_minutes: u32) -> bool {
     let Some((start_h, start_m)) = parse_time_string(start_time) else {
         return false;
     };
@@ -316,6 +313,18 @@ fn is_within_time_window(start_time: &str, end_time: &str) -> bool {
     }
 }
 
+/// Check if current time is within the reminder time window (supports overnight windows)
+fn is_within_time_window(start_time: &str, end_time: &str) -> bool {
+    let now = Local::now();
+    let current_minutes = now.hour() * 60 + now.minute();
+    is_within_time_window_at(start_time, end_time, current_minutes)
+}
+
+/// Check if a given UI weekday (0=Sun, 1=Mon, ..., 6=Sat) is in the allowed weekdays
+fn is_allowed_weekday_at(weekdays: &[u32], ui_weekday: u32) -> bool {
+    weekdays.contains(&ui_weekday)
+}
+
 /// Check if current day is in the allowed weekdays (0=Sun, 1=Mon, ..., 6=Sat)
 fn is_allowed_weekday(weekdays: &[u32]) -> bool {
     let now = Local::now();
@@ -323,7 +332,7 @@ fn is_allowed_weekday(weekdays: &[u32]) -> bool {
     // UI convention: 0=Sun, 1=Mon, ..., 6=Sat
     let chrono_weekday = now.weekday().num_days_from_monday(); // 0=Mon ... 6=Sun
     let ui_weekday = if chrono_weekday == 6 { 0 } else { chrono_weekday + 1 };
-    weekdays.contains(&ui_weekday)
+    is_allowed_weekday_at(weekdays, ui_weekday)
 }
 
 /// Helper to set tray title (macOS only - on other platforms this is a no-op)
@@ -856,4 +865,233 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- parse_hex_color ---
+    #[test]
+    fn parse_hex_color_valid_with_hash() {
+        assert_eq!(parse_hex_color("#FF5733"), Some((255, 87, 51)));
+    }
+
+    #[test]
+    fn parse_hex_color_valid_without_hash() {
+        assert_eq!(parse_hex_color("3B82F6"), Some((59, 130, 246)));
+    }
+
+    #[test]
+    fn parse_hex_color_black() {
+        assert_eq!(parse_hex_color("#000000"), Some((0, 0, 0)));
+    }
+
+    #[test]
+    fn parse_hex_color_white() {
+        assert_eq!(parse_hex_color("#FFFFFF"), Some((255, 255, 255)));
+    }
+
+    #[test]
+    fn parse_hex_color_invalid_short() {
+        assert_eq!(parse_hex_color("#FFF"), None);
+    }
+
+    #[test]
+    fn parse_hex_color_empty() {
+        assert_eq!(parse_hex_color(""), None);
+    }
+
+    #[test]
+    fn parse_hex_color_invalid_chars() {
+        assert_eq!(parse_hex_color("#GGGGGG"), None);
+    }
+
+    // --- format_tray_time ---
+    #[test]
+    fn format_tray_time_zero() {
+        assert_eq!(format_tray_time(0), "0:00");
+    }
+
+    #[test]
+    fn format_tray_time_one_minute() {
+        assert_eq!(format_tray_time(61), "0:01");
+    }
+
+    #[test]
+    fn format_tray_time_one_hour() {
+        assert_eq!(format_tray_time(3600), "1:00");
+    }
+
+    #[test]
+    fn format_tray_time_one_hour_one_minute() {
+        assert_eq!(format_tray_time(3660), "1:01");
+    }
+
+    #[test]
+    fn format_tray_time_large() {
+        assert_eq!(format_tray_time(86340), "23:59");
+    }
+
+    #[test]
+    fn format_tray_time_pads_minutes() {
+        assert_eq!(format_tray_time(300), "0:05");
+    }
+
+    // --- parse_time_string ---
+    #[test]
+    fn parse_time_string_valid() {
+        assert_eq!(parse_time_string("09:30"), Some((9, 30)));
+    }
+
+    #[test]
+    fn parse_time_string_midnight() {
+        assert_eq!(parse_time_string("00:00"), Some((0, 0)));
+    }
+
+    #[test]
+    fn parse_time_string_end_of_day() {
+        assert_eq!(parse_time_string("23:59"), Some((23, 59)));
+    }
+
+    #[test]
+    fn parse_time_string_hour_over_23() {
+        assert_eq!(parse_time_string("24:00"), None);
+    }
+
+    #[test]
+    fn parse_time_string_minute_over_59() {
+        assert_eq!(parse_time_string("12:60"), None);
+    }
+
+    #[test]
+    fn parse_time_string_bad_format() {
+        assert_eq!(parse_time_string("invalid"), None);
+    }
+
+    #[test]
+    fn parse_time_string_empty() {
+        assert_eq!(parse_time_string(""), None);
+    }
+
+    // --- is_within_time_window_at ---
+    #[test]
+    fn time_window_normal_inside() {
+        assert!(is_within_time_window_at("09:00", "18:00", 600)); // 10:00
+    }
+
+    #[test]
+    fn time_window_normal_outside_before() {
+        assert!(!is_within_time_window_at("09:00", "18:00", 480)); // 08:00
+    }
+
+    #[test]
+    fn time_window_normal_outside_after() {
+        assert!(!is_within_time_window_at("09:00", "18:00", 1140)); // 19:00
+    }
+
+    #[test]
+    fn time_window_normal_at_start() {
+        assert!(is_within_time_window_at("09:00", "18:00", 540)); // 09:00
+    }
+
+    #[test]
+    fn time_window_normal_at_end() {
+        assert!(is_within_time_window_at("09:00", "18:00", 1080)); // 18:00
+    }
+
+    #[test]
+    fn time_window_overnight_late() {
+        assert!(is_within_time_window_at("22:00", "06:00", 1380)); // 23:00
+    }
+
+    #[test]
+    fn time_window_overnight_early() {
+        assert!(is_within_time_window_at("22:00", "06:00", 180)); // 03:00
+    }
+
+    #[test]
+    fn time_window_overnight_outside() {
+        assert!(!is_within_time_window_at("22:00", "06:00", 720)); // 12:00
+    }
+
+    #[test]
+    fn time_window_invalid_start() {
+        assert!(!is_within_time_window_at("invalid", "18:00", 600));
+    }
+
+    #[test]
+    fn time_window_invalid_end() {
+        assert!(!is_within_time_window_at("09:00", "invalid", 600));
+    }
+
+    // --- is_allowed_weekday_at ---
+    #[test]
+    fn weekday_in_list() {
+        assert!(is_allowed_weekday_at(&[1, 2, 3, 4, 5], 3)); // Wednesday
+    }
+
+    #[test]
+    fn weekday_not_in_list() {
+        assert!(!is_allowed_weekday_at(&[1, 2, 3, 4, 5], 0)); // Sunday
+    }
+
+    #[test]
+    fn weekday_empty_list() {
+        assert!(!is_allowed_weekday_at(&[], 1));
+    }
+
+    #[test]
+    fn weekday_saturday() {
+        assert!(is_allowed_weekday_at(&[0, 6], 6)); // Saturday
+    }
+
+    // --- generate_colored_icon ---
+    #[test]
+    fn colored_icon_correct_size() {
+        let data = generate_colored_icon("#3B82F6", None);
+        assert_eq!(data.len(), 22 * 22 * 4);
+    }
+
+    #[test]
+    fn colored_icon_center_pixel_has_color() {
+        let data = generate_colored_icon("#FF0000", None);
+        let center = 11; // 22/2
+        let idx = ((center * 22 + center) * 4) as usize;
+        assert_eq!(data[idx], 255);     // R
+        assert_eq!(data[idx + 1], 0);   // G
+        assert_eq!(data[idx + 2], 0);   // B
+        assert_eq!(data[idx + 3], 255); // A (fully opaque)
+    }
+
+    #[test]
+    fn colored_icon_corner_is_transparent() {
+        let data = generate_colored_icon("#FF0000", None);
+        // Corner (0,0) should be transparent (outside circle)
+        assert_eq!(data[3], 0); // Alpha of first pixel
+    }
+
+    // --- generate_menu_icon ---
+    #[test]
+    fn menu_icon_correct_size() {
+        let data = generate_menu_icon("#3B82F6");
+        assert_eq!(data.len(), 16 * 16 * 4);
+    }
+
+    #[test]
+    fn menu_icon_center_pixel_has_color() {
+        let data = generate_menu_icon("#00FF00");
+        let center = 8; // 16/2
+        let idx = ((center * 16 + center) * 4) as usize;
+        assert_eq!(data[idx], 0);       // R
+        assert_eq!(data[idx + 1], 255); // G
+        assert_eq!(data[idx + 2], 0);   // B
+        assert_eq!(data[idx + 3], 255); // A
+    }
+
+    #[test]
+    fn menu_icon_corner_is_transparent() {
+        let data = generate_menu_icon("#FF0000");
+        assert_eq!(data[3], 0);
+    }
 }

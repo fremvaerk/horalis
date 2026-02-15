@@ -1,156 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { MoreVertical, Trash2, Pencil, AlertTriangle, X, Square, Clock, Calendar, Plus } from "lucide-react";
-import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, createTimeEntry, getRunningEntry, stopTimeEntry, TimeEntry, Project } from "../../lib/db";
+import { getTimeEntries, getProjects, deleteTimeEntry, updateTimeEntry, createTimeEntry, getRunningEntry, stopTimeEntry, Project } from "../../lib/db";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
-
-interface EntryWithProject extends TimeEntry {
-  project_name: string;
-  project_color: string;
-}
-
-interface ProjectSummary {
-  projectId: number;
-  projectName: string;
-  projectColor: string;
-  totalSeconds: number;
-  percentage: number;
-}
-
-interface DayGroup {
-  date: string;
-  displayDate: string;
-  entries: EntryWithProject[];
-  totalDuration: number;
-  projectBreakdown: ProjectSummary[];
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) {
-    return `${h}h ${m.toString().padStart(2, "0")}min`;
-  }
-  return `${m}min`;
-}
-
-function formatEntryDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  }
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function parseDbDate(dateStr: string): Date {
-  if (dateStr.includes("T")) {
-    return new Date(dateStr);
-  }
-  return new Date(dateStr + "Z");
-}
-
-function formatTime(dateStr: string): string {
-  const date = parseDbDate(dateStr);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function getDateKey(dateStr: string): string {
-  if (dateStr.includes("T")) {
-    return dateStr.split("T")[0];
-  }
-  return dateStr.split(" ")[0];
-}
-
-function formatDisplayDate(dateKey: string): string {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const entryDate = new Date(year, month - 1, day);
-  entryDate.setHours(0, 0, 0, 0);
-
-  if (entryDate.getTime() === today.getTime()) {
-    return "Today";
-  } else if (entryDate.getTime() === yesterday.getTime()) {
-    return "Yesterday";
-  } else {
-    const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
-    const d = String(date.getDate()).padStart(2, "0");
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const y = date.getFullYear();
-    return `${weekday}, ${d}.${m}.${y}`;
-  }
-}
-
-function groupEntriesByDay(entries: EntryWithProject[]): DayGroup[] {
-  const groups: Map<string, EntryWithProject[]> = new Map();
-
-  for (const entry of entries) {
-    const dateKey = getDateKey(entry.start_time);
-    if (!groups.has(dateKey)) {
-      groups.set(dateKey, []);
-    }
-    groups.get(dateKey)!.push(entry);
-  }
-
-  const result: DayGroup[] = [];
-  for (const [dateKey, dayEntries] of groups) {
-    const totalDuration = dayEntries.reduce((sum, e) => sum + (e.duration || 0), 0);
-
-    const projectTotals = new Map<number, { name: string; color: string; seconds: number }>();
-    for (const entry of dayEntries) {
-      const existing = projectTotals.get(entry.project_id);
-      if (existing) {
-        existing.seconds += entry.duration || 0;
-      } else {
-        projectTotals.set(entry.project_id, {
-          name: entry.project_name,
-          color: entry.project_color,
-          seconds: entry.duration || 0,
-        });
-      }
-    }
-
-    const projectBreakdown: ProjectSummary[] = Array.from(projectTotals.entries())
-      .map(([projectId, data]) => ({
-        projectId,
-        projectName: data.name,
-        projectColor: data.color,
-        totalSeconds: data.seconds,
-        percentage: totalDuration > 0 ? (data.seconds / totalDuration) * 100 : 0,
-      }))
-      .sort((a, b) => b.totalSeconds - a.totalSeconds);
-
-    result.push({
-      date: dateKey,
-      displayDate: formatDisplayDate(dateKey),
-      entries: dayEntries,
-      totalDuration,
-      projectBreakdown,
-    });
-  }
-
-  return result.sort((a, b) => b.date.localeCompare(a.date));
-}
-
-function toLocalDateTimeInput(dbDateStr: string): string {
-  const date = parseDbDate(dbDateStr);
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
-function fromLocalDateTimeInput(localDateTimeStr: string): string {
-  const date = new Date(localDateTimeStr);
-  return date.toISOString().replace("T", " ").slice(0, 19);
-}
+import { EntryWithProject, ProjectSummary } from "../../lib/types";
+import {
+  formatDurationLong,
+  formatEntryDuration,
+  parseDbDate,
+  formatTimeOfDay,
+  groupEntriesByDay,
+  toLocalDateTimeInput,
+  fromLocalDateTimeInput,
+} from "../../lib/format";
 
 function DaySummaryBar({ breakdown }: { breakdown: ProjectSummary[] }) {
   const [hoveredProject, setHoveredProject] = useState<ProjectSummary | null>(null);
@@ -196,7 +58,7 @@ function DaySummaryBar({ breakdown }: { breakdown: ProjectSummary[] }) {
               {hoveredProject.projectName}
             </span>
             <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              {formatDuration(hoveredProject.totalSeconds)}
+              {formatDurationLong(hoveredProject.totalSeconds)}
             </span>
           </div>
         </div>
@@ -491,7 +353,7 @@ export default function HistoryPage() {
                 }}
               >
                 <Clock size={14} />
-                Started {formatTime(runningEntry.start_time)}
+                Started {formatTimeOfDay(runningEntry.start_time)}
               </div>
 
               {/* Duration */}
@@ -562,7 +424,7 @@ export default function HistoryPage() {
                     fontFamily: 'var(--font-mono)'
                   }}
                 >
-                  {formatDuration(group.totalDuration)}
+                  {formatDurationLong(group.totalDuration)}
                 </span>
               </div>
 
@@ -601,7 +463,7 @@ export default function HistoryPage() {
                       className="text-sm shrink-0"
                       style={{ color: 'var(--text-muted)' }}
                     >
-                      {formatTime(entry.start_time)} - {entry.end_time ? formatTime(entry.end_time) : "..."}
+                      {formatTimeOfDay(entry.start_time)} - {entry.end_time ? formatTimeOfDay(entry.end_time) : "..."}
                     </div>
 
                     {/* Duration */}
@@ -717,7 +579,7 @@ export default function HistoryPage() {
                 <span className="font-medium">{deleteConfirm.project_name}</span>
               </div>
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                {formatTime(deleteConfirm.start_time)} - {deleteConfirm.end_time ? formatTime(deleteConfirm.end_time) : "..."}
+                {formatTimeOfDay(deleteConfirm.start_time)} - {deleteConfirm.end_time ? formatTimeOfDay(deleteConfirm.end_time) : "..."}
                 <span className="mx-2">·</span>
                 <span style={{ fontFamily: 'var(--font-mono)' }}>
                   {formatEntryDuration(deleteConfirm.duration || 0)}

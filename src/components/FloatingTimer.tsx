@@ -3,34 +3,7 @@ import { GripVertical, Play, Square, ChevronDown } from "lucide-react";
 import { useTimerStore } from "../store";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
-
-function isWithinTimeWindow(startTime: string, endTime: string): boolean {
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const [startH, startM] = startTime.split(':').map(Number);
-  const [endH, endM] = endTime.split(':').map(Number);
-  const startMinutes = startH * 60 + startM;
-  const endMinutes = endH * 60 + endM;
-
-  if (startMinutes <= endMinutes) {
-    // Normal window (e.g., 09:00 - 18:00)
-    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-  } else {
-    // Overnight window (e.g., 22:00 - 06:00)
-    return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
-  }
-}
-
-function isAllowedWeekday(weekdays: number[]): boolean {
-  return weekdays.includes(new Date().getDay());
-}
+import { formatElapsedTime, isWithinTimeWindow, isAllowedWeekday } from "../lib/format";
 
 export default function FloatingTimer() {
   const {
@@ -66,8 +39,10 @@ export default function FloatingTimer() {
     }
 
     const checkAndBlink = () => {
-      const inWindow = isWithinTimeWindow(settings.reminder_start_time, settings.reminder_end_time);
-      const allowedDay = isAllowedWeekday(settings.reminder_weekdays);
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const inWindow = isWithinTimeWindow(settings.reminder_start_time, settings.reminder_end_time, currentMinutes);
+      const allowedDay = isAllowedWeekday(settings.reminder_weekdays, now.getDay());
       if (inWindow && allowedDay) {
         setIsBlinking(true);
         setTimeout(() => setIsBlinking(false), 1000);
@@ -278,7 +253,7 @@ export default function FloatingTimer() {
 
         {/* Timer display */}
         <div className={`font-mono text-base font-semibold tracking-wider tabular-nums transition-colors duration-200 ${isBlinking ? 'text-black' : 'text-white'}`}>
-          {formatTime(elapsedSeconds)}
+          {formatElapsedTime(elapsedSeconds)}
         </div>
 
         {/* Spacer to keep timer clear of button overlap */}

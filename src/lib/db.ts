@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { getMondayDateString } from "./format";
 
 let db: Database | null = null;
 
@@ -187,14 +188,7 @@ export async function getTodayTotal(): Promise<number> {
 
 export async function getWeekTotal(): Promise<number> {
   const db = await getDb();
-  // Calculate Monday of the current week
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayOffset);
-  monday.setHours(0, 0, 0, 0);
-  const mondayStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+  const mondayStr = getMondayDateString(new Date());
 
   const result = await db.select<{ total: number | null }[]>(
     `SELECT SUM(duration) as total
