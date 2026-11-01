@@ -759,6 +759,39 @@ fn update_tray_menu(app: tauri::AppHandle, projects: Vec<ProjectInfo>, is_runnin
     Ok(())
 }
 
+/// Show the dashboard window, or create it if it does not exist.
+///
+/// The dashboard is not declared in `tauri.conf.json`, so no hidden webview is
+/// kept alive at startup. Closing the dashboard destroys it and frees its memory.
+fn show_or_create_dashboard(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("dashboard") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+
+    match WebviewWindowBuilder::new(
+        app,
+        "dashboard",
+        WebviewUrl::App("index.html#/dashboard".into()),
+    )
+    .title("Horalis")
+    .inner_size(900.0, 650.0)
+    .min_inner_size(700.0, 500.0)
+    .resizable(true)
+    .decorations(true)
+    .center()
+    .focused(true)
+    .build()
+    {
+        Ok(window) => {
+            let _ = window.set_focus();
+        }
+        Err(e) => eprintln!("Failed to create dashboard window: {e}"),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -811,25 +844,7 @@ pub fn run() {
                                 }
                             }
                         }
-                        "dashboard" => {
-                            if let Some(window) = app.get_webview_window("dashboard") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            } else {
-                                // Window was closed, recreate it
-                                let _ = WebviewWindowBuilder::new(
-                                    app,
-                                    "dashboard",
-                                    WebviewUrl::App("index.html#/dashboard".into()),
-                                )
-                                .title("Horalis")
-                                .inner_size(900.0, 650.0)
-                                .min_inner_size(700.0, 500.0)
-                                .resizable(true)
-                                .center()
-                                .build();
-                            }
-                        }
+                        "dashboard" => show_or_create_dashboard(app),
                         "stop" => {
                             // Emit event to frontend to stop the timer
                             let _ = app.emit("stop-timer", ());

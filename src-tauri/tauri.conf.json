@@ -27,19 +27,6 @@
         "shadow": false,
         "acceptFirstMouse": true,
         "visibleOnAllWorkspaces": true
-      },
-      {
-        "label": "dashboard",
-        "title": "Horalis",
-        "url": "index.html#/dashboard",
-        "width": 900,
-        "height": 650,
-        "minWidth": 700,
-        "minHeight": 500,
-        "decorations": true,
-        "resizable": true,
-        "visible": false,
-        "center": true
       }
     ],
     "security": {
