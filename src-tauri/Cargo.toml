@@ -31,3 +31,13 @@ directories = "5.0"
 # macOS-specific: enable private API for features like tray title
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+
+# Smaller, faster release binary.
+# panic = "abort": no code in lib.rs relies on unwinding (no catch_unwind, no
+# JoinHandle result checks). A panic in any thread or task now ends the app.
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = true
+panic = "abort"
